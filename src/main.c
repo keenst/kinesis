@@ -7,15 +7,24 @@ unsigned int VAO;
 
 void startup() {
 	const float vertices[] = {
-		0.5f,   0.5f, 0,
-		0.5f,  -0.5f, 0,
-		-0.5f, -0.5f, 0,
-		-0.5f,  0.5f, 0
+		-0.5f, -0.5f,  0.5f,
+		 0.5f, -0.5f,  0.5f,
+		 0.5f,  0.5f,  0.5f,
+		-0.5f,  0.5f,  0.5f,
+
+		-0.5f, -0.5f, -0.5f,
+		 0.5f, -0.5f, -0.5f,
+		 0.5f,  0.5f, -0.5f,
+		-0.5f,  0.5f, -0.5f,
 	};
 
 	const unsigned int indices[] = {
-		0, 1, 3,
-		1, 2, 3
+		0, 1, 2, 2, 3, 0,
+		4, 5, 6, 6, 7, 4,
+		4, 0, 3, 3, 7, 4,
+		1, 5, 6, 6, 2, 1,
+		3, 2, 6, 6, 7, 3,
+		4, 5, 1, 1, 0, 4
 	};
 
 	glGenVertexArrays(1, &VAO);
@@ -60,5 +69,5 @@ void main_loop() {
 
 	glBindVertexArray(VAO);
 	glUseProgram(SHADER);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 }
