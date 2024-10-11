@@ -2,7 +2,7 @@
 #include "math.h"
 #include "math_helper.h"
 
-Mat4 mat4_multiply(const Mat4 a, const Mat4 b) {
+Mat4 mat4_mul(const Mat4 a, const Mat4 b) {
 	Mat4 result = {};
 
 	for (int i = 0; i < 4; i++) {
@@ -32,14 +32,14 @@ Mat4 mat4_rotate(const Mat4 matrix, const float angle_deg, Vec3 axis) {
 
 	const Mat4 rotation_matrix = {
 		{
-			{ cos + axis.x * axis.x * (1 - cos),	 		axis.x * axis.y * (1 - cos) - axis.z * sin, 	axis.x * axis.z * (1 - cos) + axis.y * sin, 0 },
-			{ axis.y * axis.x * (1 - cos) + axis.z * sin,	cos + axis.y * axis.y * (1 - cos),				axis.y * axis.z * (1 - cos) + axis.x * sin, 0 },
-			{ axis.z * axis.x * (1 - cos) - axis.z * sin,	axis.z * axis.y * (1 - cos) - axis.x * sin,		cos + axis.z * axis.z * (1 - cos),			0 },
-			{ 0, 0,	0, 1 }
+			{ cos + axis.x * axis.x * (1 - cos),			axis.y * axis.x * (1 - cos) + axis.z * sin,		axis.z * axis.x * (1 - cos) - axis.z * sin, 0 },
+			{ axis.x * axis.y * (1 - cos) - axis.z * sin,	cos + axis.y * axis.y * (1 - cos),				axis.z * axis.y * (1 - cos) - axis.x * sin, 0 },
+			{ axis.x * axis.z * (1 - cos) + axis.y * sin, 	axis.y * axis.z * (1 - cos) + axis.x * sin,		cos + axis.z * axis.z * (1 - cos),			0 },
+			{ 0, 0, 0, 1 }
 		}
 	};
 
-	return mat4_multiply(matrix, rotation_matrix);
+	return mat4_mul(matrix, rotation_matrix);
 }
 
 Mat4 mat4_perspective(const float fov_deg, const float aspect_ratio, const float near_clip_plane, const float far_clip_plane) {
@@ -55,6 +55,29 @@ Mat4 mat4_perspective(const float fov_deg, const float aspect_ratio, const float
 	matrix.m[3][2] = -1;
 
 	return matrix;
+}
+
+Mat4 mat4_look_at(const Vec3 eye, const Vec3 center, Vec3 up) {
+	const Vec3 forward = vec3_normalize(vec3_sub(center, eye));
+	const Vec3 right = vec3_normalize(vec3_cross(forward, up));
+	up = vec3_cross(right, forward);
+
+	const Mat4 view = {
+		{
+			/*
+			{ right.x, up.x, -forward.x, 0 },
+			{ right.y, up.y, -forward.y, 0 },
+			{ right.z, up.z, -forward.z, 0 },
+			{ vec3_dot(right, eye), vec3_dot(up, eye), -vec3_dot(forward, eye), 1 }
+			*/
+			{ right.x, right.y, right.z, -vec3_dot(right, eye) },
+			{ up.x, up.y, up.z, -vec3_dot(up, eye) },
+			{ -forward.x, -forward.y, -forward.z, vec3_dot(forward, eye) },
+			{ 0, 0, 0, 1 }
+		}
+	};
+
+	return view;
 }
 
 const float* const mat4_flatten(const Mat4* const matrix) {

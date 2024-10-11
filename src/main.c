@@ -1,20 +1,50 @@
 #include "glad/gl.h"
 #include "shader.h"
 #include "matrix.h"
+#include <stdbool.h>
 
 Shader SHADER;
 unsigned int VAO;
 
+Mat4 VIEW;
+Mat4 PROJECTION;
+
+typedef struct {
+	Vec3 position;
+	bool is_active;
+} Cube;
+
+#define NUM_CUBES 256
+Cube CUBES[NUM_CUBES] = {};
+
+void draw_cubes() {
+	for (int i = 0; i < NUM_CUBES; i++) {
+		const Cube* const cube = &CUBES[i];
+
+		if (!cube->is_active) {
+			continue;
+		}
+
+		Mat4 model = MAT4_IDENTITY;
+		model = mat4_translate(model, cube->position);
+
+		shader_set_mat4(SHADER, "model", &model);
+		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+	}
+}
+
 void startup() {
+	glClearColor(0.2f, 0.3f, 0.3f, 1);
+
 	const float vertices[] = {
 		-0.5f, -0.5f,  0.5f,
-		 0.5f, -0.5f,  0.5f,
-		 0.5f,  0.5f,  0.5f,
+		0.5f,  -0.5f,  0.5f,
+		0.5f,   0.5f,  0.5f,
 		-0.5f,  0.5f,  0.5f,
 
 		-0.5f, -0.5f, -0.5f,
-		 0.5f, -0.5f, -0.5f,
-		 0.5f,  0.5f, -0.5f,
+		0.5f,  -0.5f, -0.5f,
+		0.5f,   0.5f, -0.5f,
 		-0.5f,  0.5f, -0.5f,
 	};
 
@@ -44,30 +74,26 @@ void startup() {
 	glEnableVertexAttribArray(0);
 
 	SHADER = compile_shader("data/shaders/basic.vert", "data/shaders/basic.frag");
+
+	PROJECTION = mat4_perspective(45, 800.f / 600, 0.1f, 100);
+
+	VIEW = mat4_look_at(new_vec3(0, 10, -10), new_vec3(0, 0, 0), new_vec3(0, 1, 0));
+
+	CUBES[0].position = new_vec3(0, 0, 0);
+	CUBES[0].is_active = true;
+
+	CUBES[1].position = new_vec3(2, 0, 1);
+	CUBES[1].is_active = true;
 }
 
 void main_loop() {
-	glClearColor(0.2f, 0.3f, 0.3f, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	Mat4 view = MAT4_IDENTITY;
-	view = mat4_translate(view, new_vec3(0, 0, -3));
-
-	const Mat4 projection = mat4_perspective(45, 800.f / 600, 0.1f, 100);
-
-	Mat4 model = MAT4_IDENTITY;
-	model = mat4_rotate(model, -55, new_vec3(1, 0, 0));
-
-	const int model_loc = glGetUniformLocation(SHADER, "model");
-	glUniformMatrix4fv(model_loc, 1, GL_FALSE, mat4_flatten(&model));
-
-	const int view_loc = glGetUniformLocation(SHADER, "view");
-	glUniformMatrix4fv(view_loc, 1, GL_FALSE, mat4_flatten(&view));
-
-	const int projection_loc = glGetUniformLocation(SHADER, "projection");
-	glUniformMatrix4fv(projection_loc, 1, GL_FALSE, mat4_flatten(&projection));
+	shader_set_mat4(SHADER, "view", &VIEW);
+	shader_set_mat4(SHADER, "projection", &PROJECTION);
 
 	glBindVertexArray(VAO);
 	glUseProgram(SHADER);
-	glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+
+	draw_cubes();
 }

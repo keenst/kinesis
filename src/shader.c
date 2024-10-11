@@ -1,10 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include "matrix.h"
 #include "glad/gl.h"
 #include "shader.h"
 
 const char* const read_source_file(const char* const path) {
-	FILE* const file = fopen(path, "rb");
+	FILE* file;
+	fopen_s(&file, path, "rb");
+
 	if (!file) {
 		printf("Failed to open shader source file\n");
 		return 0;
@@ -71,4 +74,9 @@ Shader compile_shader(const char* const vertex_path, const char* const fragment_
 	}
 
 	return shader_program;
+}
+
+void shader_set_mat4(Shader shader, const char* const name, const Mat4* const mat4) {
+	const int mat4_location = glGetUniformLocation(shader, name);
+	glUniformMatrix4fv(mat4_location, 1, GL_FALSE, mat4_flatten(mat4));
 }
