@@ -38,3 +38,7 @@ Vec3 vec3_cross(const Vec3 a, const Vec3 b) {
 	c.z = a.x * b.y - a.y * b.x;
 	return c;
 }
+
+const float* const vec3_flatten(const Vec3* const vec3) {
+	return (float*)vec3;
+}

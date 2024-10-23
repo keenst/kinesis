@@ -80,3 +80,8 @@ void shader_set_mat4(Shader shader, const char* const name, const Mat4* const ma
 	const int mat4_location = glGetUniformLocation(shader, name);
 	glUniformMatrix4fv(mat4_location, 1, GL_FALSE, mat4_flatten(mat4));
 }
+
+void shader_set_vec3(Shader shader, const char* const name, const Vec3* const vec3) {
+	const int vec3_location = glGetUniformLocation(shader, name);
+	glUniform3fv(vec3_location, 1, vec3_flatten(vec3));
+}

@@ -64,12 +64,6 @@ Mat4 mat4_look_at(const Vec3 eye, const Vec3 center, Vec3 up) {
 
 	const Mat4 view = {
 		{
-			/*
-			{ right.x, up.x, -forward.x, 0 },
-			{ right.y, up.y, -forward.y, 0 },
-			{ right.z, up.z, -forward.z, 0 },
-			{ vec3_dot(right, eye), vec3_dot(up, eye), -vec3_dot(forward, eye), 1 }
-			*/
 			{ right.x, right.y, right.z, -vec3_dot(right, eye) },
 			{ up.x, up.y, up.z, -vec3_dot(up, eye) },
 			{ -forward.x, -forward.y, -forward.z, vec3_dot(forward, eye) },
