@@ -20,25 +20,10 @@ Vec3 vec3_normalize(Vec3 vector) {
 	return vector;
 }
 
-Vec3 vec3_sub(Vec3 a, const Vec3 b) {
-	a.x -= b.x;
-	a.y -= b.y;
-	a.z -= b.z;
-	return a;
-}
-
-float vec3_dot(const Vec3 a, const Vec3 b) {
-	return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-Vec3 vec3_cross(const Vec3 a, const Vec3 b) {
-	Vec3 c;
-	c.x = a.y * b.z - a.z * b.y;
-	c.y = a.z * b.x - a.x * b.z;
-	c.z = a.x * b.y - a.y * b.x;
-	return c;
-}
-
 const float* const vec3_flatten(const Vec3* const vec3) {
 	return (float*)vec3;
+}
+
+Vec4 new_vec4(const float x, const float y, const float z, const float w) {
+	return (Vec4){ x, y, z, w };
 }

@@ -1,27 +1,7 @@
 #include "matrix.h"
 #include "math.h"
 #include "math_helper.h"
-
-Mat4 mat4_mul(const Mat4 a, const Mat4 b) {
-	Mat4 result = {};
-
-	for (int i = 0; i < 4; i++) {
-		for (int j = 0; j < 4; j++) {
-			for (int k = 0; k < 4; k++) {
-				result.m[i][j] += a.m[i][k] * b.m[k][j];
-			}
-		}
-	}
-
-	return result;
-}
-
-Mat4 mat4_translate(Mat4 matrix, const Vec3 vector) {
-	matrix.m[0][3] += vector.x;
-	matrix.m[1][3] += vector.y;
-	matrix.m[2][3] += vector.z;
-	return matrix;
-}
+#include "math_ops.h"
 
 Mat4 mat4_rotate(const Mat4 matrix, const float angle_deg, Vec3 axis) {
 	axis = vec3_normalize(axis);
