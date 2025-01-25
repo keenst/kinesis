@@ -73,8 +73,6 @@ static const Vec3 GRAVITY = { 0, -9.81f, 0 };
 
 static const float COLLISION_DIST_TOLERANCE = 0.01f;
 static const double COLLISION_TIME_TOLERANCE = 0.00001f;
-static const float PENETRATION_CORRECTION = 0.01f;
-static const float CONTACT_VELOCITY_THRESHOLD = 0.01f;
 static const float ANGULAR_DAMPING_FACTOR = 0.999f;
 static const float TORSIONAL_FRICTION_COEFFICIENT = 0.01f;
 static const float LINEAR_FRICTION_COEFFICIENT = 0.5f;
@@ -359,7 +357,6 @@ void remove_contact(const int contact_index) {
 // Integrates a cube by t
 void integrate_cube(Cube* const cube, const float t) {
 	// Dampen angular velocity
-	// TODO: Is this necessary with contacts?
 	cube->angular_velocity = vec3_scale(cube->angular_velocity, 1 - ANGULAR_DAMPING_FACTOR * t);
 
 	// Integrate linear
@@ -376,14 +373,6 @@ void integrate_cube(Cube* const cube, const float t) {
 	Mat4 transform = mat3_to_mat4(&model_mat3);
 	transform = mat4_translate(&transform, cube->position);
 	cube->transform = transform;
-
-	// Calculate kinetic energy
-	const float linear_kinetic_energy = 0.5f * CUBE_MASS * vec3_length(cube->velocity) * vec3_length(cube->velocity);
-	const float rotational_kinetic_energy = 0.5f *
-		(cube->angular_velocity.x * (cube->inertia.m[0][0] * cube->angular_velocity.x + cube->inertia.m[1][0] * cube->angular_velocity.y + cube->inertia.m[2][0] * cube->angular_velocity.z) +
-		cube->angular_velocity.y * (cube->inertia.m[1][0] * cube->angular_velocity.x + cube->inertia.m[1][1] * cube->angular_velocity.y + cube->inertia.m[2][1] * cube->angular_velocity.z) +
-		cube->angular_velocity.z * (cube->inertia.m[2][0] * cube->angular_velocity.x + cube->inertia.m[2][1] * cube->angular_velocity.y * cube->inertia.m[2][2] * cube->angular_velocity.z));
-	//printf("kinetic energy: %f\n", linear_kinetic_energy + rotational_kinetic_energy);
 }
 
 // Checks for collisions and contacts.
@@ -400,8 +389,6 @@ bool collision_check(ContactManifold* const contact_manifold, Cube* const cube, 
 		integrate_cube(&cube_copy, t);
 		cube_transform = cube_copy.transform;
 	}
-
-	//printf("t: %f\n", t);
 
 	bool no_collisions = true;
 
@@ -422,79 +409,15 @@ bool collision_check(ContactManifold* const contact_manifold, Cube* const cube, 
 				contact_manifold->depths[contact_manifold->num_points] = world_point.y;
 				contact_manifold->num_points++;
 			}
-
-			/*
-			// Check for contact
-			if (fabs(cube->velocity.y) < CONTACT_VELOCITY_THRESHOLD) {
-				return true;
-			}
-			*/
 		}
 	}
 
 	return !no_collisions;
 }
 
-void update_contacts() {
-	for (int i = 0; i < MAX_CONTACTS; i++) {
-		if (!ACTIVE_CONTACTS[i]) {
-			continue;
-		}
-
-		Contact* const contact = &CONTACTS[i];
-		Cube* const cube = contact->cube;
-
-		// TODO: This should probably not run a whole collision check, it just needs to get the bottom-most point on the cube
-		// TODO: Ruined this code for now, will have to fix
-		/*
-		if (collision_check(NULL, cube, 0)) {
-			contact->penetration_depth = -local_collision_point.y;
-		}
-		*/
-	}
-}
-
-void resolve_contacts() {
-	for (int i = 0; i < MAX_CONTACTS; i++) {
-		if (!ACTIVE_CONTACTS[i]) {
-			continue;
-		}
-
-		const Contact* const contact = &CONTACTS[i];
-		Cube* const cube = contact->cube;
-
-		//cube->position = vec3_add(cube->position, vec3_scale(contact->normal, contact->penetration_depth));
-	}
-}
-
 void main_loop() {
 	// Start frame timer
 	const double pre_draw_time_ms = get_time_ms();
-
-	/*
-	const float current_time_ms = get_time_ms();
-	const double elapsed_ms = current_time_ms - PREV_TIME_MS;
-	if (!IS_FIRST_FRAME) {
-		DELTA_TIME = elapsed_ms / 1000.f;
-		TOTAL_TIME_MS += DELTA_TIME;
-	} else {
-		IS_FIRST_FRAME = false;
-	}
-
-	PREV_TIME_MS = get_time_ms();
-
-	if (IS_FIRST_FRAME) {
-		return;
-	}
-
-	double sleep_amount = 1000.0 / 60 - elapsed_ms;
-	sleep_ms(fmax(sleep_amount, 0));
-	printf("FPS: %f\n", 1000 / elapsed_ms);
-	*/
-
-	update_contacts();
-
-	resolve_contacts();
 
 	// Collision detection
 	for (int i = 0; i < MAX_CUBES; i++) {
@@ -510,25 +433,12 @@ void main_loop() {
 		double t1 = DELTA_TIME;
 		double t_mid = 0;
 		ContactManifold contact_manifold = {};
-		int num_iterations = 0;
 		while (t1 - t0 > COLLISION_TIME_TOLERANCE) {
-			num_iterations++;
 			t_mid = (t0 + t1) / 2;
 
-			// Don't resolve the collision if the cube is just resting
-			/*
-			if (collision_result == RESTING) {
-				add_contact(&CUBES[i], local_collision_point, collision_normal, -local_collision_point.y);
-				break;
-			}
-			*/
-
-			bool collision;
 			if (collision_check(&contact_manifold, &CUBES[i], t_mid)) {
-				collision = true;
 				t1 = t_mid;
 			} else {
-				collision = false;
 				t0 = t_mid;
 			}
 
@@ -556,8 +466,6 @@ void main_loop() {
 
 			integrate_cube(&CUBES[i], time_of_impact);
 
-			const float normal_force = CUBE_MASS * 9.81f;
-
 			/*
 			// Linear friction
 			const Vec3 linear_friction_force = vec3_scale(vec3_normalize(CUBES[i].velocity), normal_force * -LINEAR_FRICTION_COEFFICIENT / vec3_length(CUBES[i].velocity));
@@ -570,10 +478,6 @@ void main_loop() {
 			CUBES[i].velocity = vec3_add(CUBES[i].velocity, vec3_div(rolling_friction_force, CUBE_MASS / time_of_impact));
 			*/
 
-
-			// Correct penetration
-			// TODO: Is this necessary after implementing contact?
-
 			// Calculate impulse
 			const Vec3 local_point_velocity = vec3_cross(CUBES[i].angular_velocity, local_collision_point);
 			const Vec3 point_velocity = vec3_add(CUBES[i].velocity, local_point_velocity);
@@ -582,25 +486,6 @@ void main_loop() {
 			const Vec3 mass_part = vec3_scale(collision_normal, 1 / CUBE_MASS);
 			const Vec3 inertia_part = vec3_cross(vec3_mul_mat3(vec3_cross(local_collision_point, collision_normal), &CUBES[i].inverse_inertia), local_collision_point);
 			const float denominator = vec3_dot(collision_normal, mass_part) + vec3_dot(collision_normal, inertia_part);
-
-			/* The problem:
-			 * The impulse is too large when the cube is barely touching the floor
-			 * It's also too small when the cube is touching the floor hard
-			 * Need some sort of better scaling
-			 * The cube's initial velocity should have a bigger impact on impulse
-			 *
-			 * The problem might also just be the precision of the simulation
-			 * If I make it more precise, the impulses might get smaller
-			 */ 
-
-			/* I don't think the problem is the bisection
-			 * It looks like the bisection is giving weird values, the penetration doesn't seem to change even as delta time approaches 0
-			 * But I think this is simply because the collision check happens on a timestep where the point is already under the floor
-			 * And since the bisection can't go back in time, it can't give an accurate time of impact
-			 * So to fix the issue I need the collision to have been resolved before the next timestep, since I want accurate values from the bisection
-			 * I just need to figure out why this is an issue, could be a bunch of things:
-			 * Impulse, penetration correction, etc.
-			 */
 
 			const float impulse_magnitude = numerator / denominator;
 			const Vec3 impulse = vec3_scale(collision_normal, impulse_magnitude);
@@ -631,8 +516,6 @@ void main_loop() {
 				CUBES[i].angular_velocity = vec3_add(CUBES[i].angular_velocity, vec3_scale(torsional_friction_acceleration, time_of_impact));
 			}
 		}
-
-		//pintf("linear velocity: %f\n", CUBES[i].velocity.y);
 	}
 
 	// Integrate cubes
@@ -675,8 +558,6 @@ void main_loop() {
 	// Update delta time
 	const double post_draw_time_ms = get_time_ms();
 	const double elapsed_ms = post_draw_time_ms - pre_draw_time_ms;
-
-	printf("FPS: %f %f\n", 1000.f / 1 / elapsed_ms, elapsed_ms);
 
 	const double sleep_amount = 1000.0 / 60 - 1 / elapsed_ms;
 	sleep_ms(fmax(sleep_amount, 0));
