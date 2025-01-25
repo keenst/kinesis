@@ -24,6 +24,10 @@ const float* const vec3_flatten(const Vec3* const vec3) {
 	return (float*)vec3;
 }
 
+Vec3 vec4_to_vec3(const Vec4 vec4) {
+	return new_vec3(vec4.x, vec4.y, vec4.z);
+}
+
 Vec4 new_vec4(const float x, const float y, const float z, const float w) {
 	return (Vec4){ x, y, z, w };
 }

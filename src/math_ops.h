@@ -2,17 +2,21 @@
 
 #include "matrix.h"
 
+// Mat3
+Mat3 mat3_mul(const Mat3* const a, const Mat3* const b);
+Mat3 mat3_mul_float(const Mat3* const matrix, const float scalar);
+
 // Mat4
 Mat4 mat4_mul(const Mat4 a, const Mat4 b);
-Mat4 mat4_scale(const Mat4* const matrix, const Vec3* const vector);
-Mat4 mat4_translate(const Mat4 matrix, const Vec3 vector);
 
 // Vec3
-Vec3 vec3_add(const Vec3* const a, const Vec3* const b);
+Vec3 vec3_add(const Vec3 a, const Vec3 b);
 Vec3 vec3_sub(Vec3 a, const Vec3 b);
 Vec3 vec3_cross(const Vec3 a, const Vec3 b);
-Vec3 vec3_scale(const Vec3* const a, const float b);
+Vec3 vec3_scale(const Vec3 a, const float b);
+Vec3 vec3_div(const Vec3 a, const float b);
 float vec3_dot(const Vec3 a, const Vec3 b);
+Vec3 vec3_mul_mat3(const Vec3 a, const Mat3* const b);
 
 // Vec4
-Vec4 vec4_mul_mat4(const Vec4* const vec4, const Mat4* const mat4);
+Vec4 vec4_mul_mat4(const Vec4 vec4, const Mat4* const mat4);

@@ -134,7 +134,17 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line
 
 	GL_LOADED = true;
 
-	startup();
+	// Get command line arguments
+	const LPWSTR arguments_wide = GetCommandLineW();
+	char arguments_narrow[1024];
+	WideCharToMultiByte(CP_UTF8, 0, arguments_wide, -1, arguments_narrow, sizeof(arguments_narrow), NULL, NULL);
+
+	int argc;
+	LPWSTR* argv = CommandLineToArgvW(arguments_wide, &argc);
+
+	LocalFree(argv);
+
+	startup(argc, argv);
 
 	MSG message;
 	while (RUNNING) {

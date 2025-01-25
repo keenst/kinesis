@@ -2,10 +2,10 @@
 
 uniform vec3 light_dir;
 uniform vec3 light_color;
-uniform vec3 object_color;
 
 in vec3 normal;
 in vec3 frag_pos;
+in vec3 color;
 
 out vec4 frag_color;
 
@@ -21,6 +21,6 @@ void main() {
 	vec3 diffuse = diff * light_color;
 
 	// Result
-	vec3 result = (ambient + diffuse) * object_color;
+	vec3 result = (ambient + diffuse) * color;
 	frag_color = vec4(result, 1);
 }

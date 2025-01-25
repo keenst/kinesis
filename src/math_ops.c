@@ -1,10 +1,10 @@
 #include "math_ops.h"
 
-Vec3 vec3_add(const Vec3* const a, const Vec3* const b) {
+Vec3 vec3_add(const Vec3 a, const Vec3 b) {
 	return (Vec3){
-		a->x + b->x,
-		a->y + b->y,
-		a->z + b->z
+		a.x + b.x,
+		a.y + b.y,
+		a.z + b.z
 	};
 }
 
@@ -27,12 +27,54 @@ Vec3 vec3_cross(const Vec3 a, const Vec3 b) {
 	return c;
 }
 
-Vec3 vec3_scale(const Vec3* const a, const float b) {
+Vec3 vec3_scale(const Vec3 a, const float b) {
 	return (Vec3){
-		a->x * b,
-		a->y * b,
-		a->z * b
+		a.x * b,
+		a.y * b,
+		a.z * b
 	};
+}
+
+Vec3 vec3_div(const Vec3 a, const float b) {
+	return (Vec3){
+		a.x / b,
+		a.y / b,
+		a.z / b
+	};
+}
+
+Vec3 vec3_mul_mat3(const Vec3 a, const Mat3* const b) {
+	return (Vec3){
+		a.x * b->m[0][0] + a.x * b->m[0][1] + a.x * b->m[0][2],
+		a.y * b->m[1][0] + a.y * b->m[1][1] + a.y * b->m[1][2],
+		a.z * b->m[2][0] + a.z * b->m[2][1] + a.z * b->m[2][2]
+	};
+}
+
+Mat3 mat3_mul(const Mat3* const a, const Mat3* const b) {
+	Mat3 result = {};
+
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			for (int k = 0; k < 3; k++) {
+				result.m[i][j] += a->m[i][k] * b->m[k][j];
+			}
+		}
+	}
+
+	return result;
+}
+
+Mat3 mat3_mul_float(const Mat3* const matrix, const float scalar) {
+	Mat3 result;
+
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			result.m[i][j] = matrix->m[i][j] * scalar;
+		}
+	}
+
+	return result;
 }
 
 Mat4 mat4_mul(const Mat4 a, const Mat4 b) {
@@ -49,27 +91,12 @@ Mat4 mat4_mul(const Mat4 a, const Mat4 b) {
 	return result;
 }
 
-Mat4 mat4_translate(Mat4 matrix, const Vec3 vector) {
-	matrix.m[0][3] += vector.x;
-	matrix.m[1][3] += vector.y;
-	matrix.m[2][3] += vector.z;
-	return matrix;
-}
-
-Mat4 mat4_scale(const Mat4* const matrix, const Vec3* const vector) {
-	Mat4 new_matrix = *matrix;
-	new_matrix.m[0][0] = matrix->m[0][0] * vector->x;
-	new_matrix.m[1][1] = matrix->m[1][1] * vector->y;
-	new_matrix.m[2][2] = matrix->m[2][2] * vector->z;
-	return new_matrix;
-}
-
-Vec4 vec4_mul_mat4(const Vec4* const vec4, const Mat4* const mat4) {
+Vec4 vec4_mul_mat4(const Vec4 vec4, const Mat4* const mat4) {
 	Vec4 result_vector = {};
 	float* const result = (float*)&result_vector;
 
 	for (int i = 0; i < 4; i++) {
-		result[i] = mat4->m[i][0] * vec4->x + mat4->m[i][1] * vec4->y + mat4->m[i][2] * vec4->z + mat4->m[i][3] * vec4->w;
+		result[i] = mat4->m[i][0] * vec4.x + mat4->m[i][1] * vec4.y + mat4->m[i][2] * vec4.z + mat4->m[i][3] * vec4.w;
 	}
 
 	return result_vector;
