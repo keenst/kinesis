@@ -58,7 +58,7 @@ Mat4 PLANE_TRANSFORM;
 
 double PREV_TIME_MS = 0;
 float TOTAL_TIME_MS = 0;
-float DELTA_TIME = 0;
+double DELTA_TIME = 1.f / 60;
 
 bool IS_FIRST_FRAME = true;
 
@@ -72,7 +72,7 @@ static const float COEFFICIENT_OF_RESTITUTION = 0.7f;
 static const Vec3 GRAVITY = { 0, -9.81f, 0 };
 
 static const float COLLISION_DIST_TOLERANCE = 0.01f;
-static const float COLLISION_TIME_TOLERANCE = 0.000001f;
+static const double COLLISION_TIME_TOLERANCE = 0.00001f;
 static const float PENETRATION_CORRECTION = 0.01f;
 static const float CONTACT_VELOCITY_THRESHOLD = 0.01f;
 static const float ANGULAR_DAMPING_FACTOR = 0.999f;
@@ -345,8 +345,6 @@ void add_contact(Cube* const cube, const Vec3 contact_point, const Vec3 contact_
 		CONTACTS[i] = new_contact;
 		ACTIVE_CONTACTS[i] = true;
 
-		printf("new contact\n");
-
 		return;
 	}
 
@@ -470,7 +468,10 @@ void resolve_contacts() {
 }
 
 void main_loop() {
-	// Update delta time
+	// Start frame timer
+	const double pre_draw_time_ms = get_time_ms();
+
+	/*
 	const float current_time_ms = get_time_ms();
 	const double elapsed_ms = current_time_ms - PREV_TIME_MS;
 	if (!IS_FIRST_FRAME) {
@@ -488,6 +489,8 @@ void main_loop() {
 
 	double sleep_amount = 1000.0 / 60 - elapsed_ms;
 	sleep_ms(fmax(sleep_amount, 0));
+	printf("FPS: %f\n", 1000 / elapsed_ms);
+	*/
 
 	update_contacts();
 
@@ -503,9 +506,9 @@ void main_loop() {
 			continue;
 		}
 
-		float t0 = 0;
-		float t1 = DELTA_TIME;
-		float t_mid = 0;
+		double t0 = 0;
+		double t1 = DELTA_TIME;
+		double t_mid = 0;
 		ContactManifold contact_manifold = {};
 		int num_iterations = 0;
 		while (t1 - t0 > COLLISION_TIME_TOLERANCE) {
@@ -668,4 +671,13 @@ void main_loop() {
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
 	draw_collision_points();
+
+	// Update delta time
+	const double post_draw_time_ms = get_time_ms();
+	const double elapsed_ms = post_draw_time_ms - pre_draw_time_ms;
+
+	printf("FPS: %f %f\n", 1000.f / 1 / elapsed_ms, elapsed_ms);
+
+	const double sleep_amount = 1000.0 / 60 - 1 / elapsed_ms;
+	sleep_ms(fmax(sleep_amount, 0));
 }
