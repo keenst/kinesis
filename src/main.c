@@ -430,13 +430,7 @@ bool collision_check(ContactManifold* const contact_manifold, Cube* const cube, 
 	return !no_collisions;
 }
 
-bool sleep = false;
-
 void main_loop() {
-	if (sleep) {
-		//sleep_ms(2000);
-		sleep = false;
-	}
 	// Start frame timer
 	const double pre_draw_time_ms = get_time_ms();
 
@@ -541,8 +535,6 @@ void main_loop() {
 				const Vec3 torsional_friction_acceleration = vec3_mul_mat3(vec3_mul_mat3(torsional_friction_torque, &cube->orientation), &cube->inverse_inertia);
 				cube->angular_velocity = vec3_add(cube->angular_velocity, vec3_scale(torsional_friction_acceleration, time_of_impact));
 			}
-
-			sleep = true;
 		}
 	}
 
