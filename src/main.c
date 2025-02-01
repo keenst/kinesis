@@ -75,8 +75,7 @@ static const float COLLISION_DIST_TOLERANCE = 0.01f;
 static const double COLLISION_TIME_TOLERANCE = 0.00001f;
 static const float ANGULAR_DAMPING_FACTOR = 0.999f;
 static const float TORSIONAL_FRICTION_COEFFICIENT = 0.01f;
-static const float LINEAR_FRICTION_COEFFICIENT = 0.5f;
-static const float ROLLING_FRICTION_COEFFICIENT = 0.5f;
+static const float LINEAR_FRICTION_COEFFICIENT = 0.2f;
 
 enum { MAX_CUBES = 256 };
 Cube CUBES[MAX_CUBES] = {};
@@ -153,7 +152,7 @@ void draw_cube_vectors() {
 
 		const Cube cube = CUBES[i];
 		draw_line(cube.position, cube.velocity, new_vec3(0, 0.5, 1));
-		draw_line(cube.position, cube.angular_velocity, new_vec3(1, 0.6, 0.6));
+		draw_line(cube.position, cube.angular_velocity, new_vec3(1, 0.6f, 0.6f));
 	}
 }
 
@@ -161,7 +160,7 @@ void startup(int argc, char** argv) {
 	// Init cubes
 	CUBES[0].position = new_vec3(0, 20, 0);
 	CUBES[0].scale = mat3_scale(&MAT3_IDENTITY, CUBE_SCALE);
-	CUBES[0].orientation = mat3_rotate(&MAT3_IDENTITY, 40, new_vec3(4, 3, 0));
+	CUBES[0].orientation = mat3_rotate(&MAT3_IDENTITY, 40, new_vec3(0, 3, 4));
 	CUBES[0].inertia.m[0][0] = 1.f / 6 * CUBE_MASS * CUBE_SCALE.x * CUBE_SCALE.x;
 	CUBES[0].inertia.m[1][1] = 1.f / 6 * CUBE_MASS * CUBE_SCALE.x * CUBE_SCALE.x;
 	CUBES[0].inertia.m[2][2] = 1.f / 6 * CUBE_MASS * CUBE_SCALE.x * CUBE_SCALE.x;
@@ -173,7 +172,8 @@ void startup(int argc, char** argv) {
 	PLANE_TRANSFORM = mat4_scale(&MAT4_IDENTITY, new_vec3(50, 1, 50));
 
 	// Rendering
-	glClearColor(0.2f, 0.3f, 0.3f, 1);
+	//glClearColor(0.1f, 0.2f, 0.3f, 1);
+	glClearColor(0.2f, 0.2f, 0.2f, 1);
 	glEnable(GL_DEPTH_TEST);
 	glPointSize(10);
 
@@ -240,15 +240,28 @@ void startup(int argc, char** argv) {
 	glEnableVertexAttribArray(2);
 
 	// Plane data
+	/*
 	const float plane_vertices[] = {
 		// Position		Normals		Colors
-		-0.5, 0, -0.5,	0, 1, 0,	0.5, 0.5, 0.5,
-		0.5,  0, -0.5,	0, 1, 0,	0.5, 0.5, 0.5,
-		-0.5, 0, 0.5,	0, 1, 0,	0.5, 0.5, 0.5,
+		-0.5, 0, -0.5,	0, 1, 0,	0.39f, 0.58f, 0.93f,
+		0.5,  0, -0.5,	0, 1, 0,	0.39f, 0.58f, 0.93f,
+		-0.5, 0, 0.5,	0, 1, 0,	0.39f, 0.58f, 0.93f,
 
-		-0.5, 0, 0.5,	0, 1, 0,	0.5, 0.5, 0.5,
-		0.5,  0, -0.5,	0, 1, 0,	0.5, 0.5, 0.5,
-		0.5,  0, 0.5,	0, 1, 0,	0.5, 0.5, 0.5,
+		-0.5, 0, 0.5,	0, 1, 0,	0.39f, 0.58f, 0.93f,
+		0.5,  0, -0.5,	0, 1, 0,	0.39f, 0.58f, 0.93f,
+		0.5,  0, 0.5,	0, 1, 0,	0.39f, 0.58f, 0.93f
+	};
+	*/
+
+	const float plane_vertices[] = {
+		// Position		Normals		Colors
+		-0.5, 0, -0.5,	0, 1, 0,	1, 1, 1,
+		0.5,  0, -0.5,	0, 1, 0,	1, 1, 1,
+		-0.5, 0, 0.5,	0, 1, 0,	1, 1, 1,
+
+		-0.5, 0, 0.5,	0, 1, 0,	1, 1, 1,
+		0.5,  0, -0.5,	0, 1, 0,	1, 1, 1,
+		0.5,  0, 0.5,	0, 1, 0,	1, 1, 1
 	};
 
 	// Plane buffers
@@ -301,6 +314,7 @@ void startup(int argc, char** argv) {
 	PROJECTION = mat4_perspective(45, 800.f / 600, 0.1f, 1000);
 
 	VIEW = mat4_look_at(new_vec3(-40, 50, -40), new_vec3(0, 0, 0), new_vec3(0, 1, 0));
+	//VIEW = mat4_look_at(new_vec3(-40, 0, -40), new_vec3(0, 0, 0), new_vec3(0, 1, 0));
 }
 
 bool cube_is_resting(const int index) {
@@ -410,12 +424,19 @@ bool collision_check(ContactManifold* const contact_manifold, Cube* const cube, 
 				contact_manifold->num_points++;
 			}
 		}
+
 	}
 
 	return !no_collisions;
 }
 
+bool sleep = false;
+
 void main_loop() {
+	if (sleep) {
+		//sleep_ms(2000);
+		sleep = false;
+	}
 	// Start frame timer
 	const double pre_draw_time_ms = get_time_ms();
 
@@ -429,6 +450,8 @@ void main_loop() {
 			continue;
 		}
 
+		Cube* const cube = &CUBES[i];
+
 		double t0 = 0;
 		double t1 = DELTA_TIME;
 		double t_mid = 0;
@@ -436,7 +459,7 @@ void main_loop() {
 		while (t1 - t0 > COLLISION_TIME_TOLERANCE) {
 			t_mid = (t0 + t1) / 2;
 
-			if (collision_check(&contact_manifold, &CUBES[i], t_mid)) {
+			if (collision_check(&contact_manifold, cube, (float)t_mid)) {
 				t1 = t_mid;
 			} else {
 				t0 = t_mid;
@@ -447,7 +470,7 @@ void main_loop() {
 		//printf("iterations: %i\n", num_iterations);
 
 		if (contact_manifold.num_points > 2) {
-			if (vec3_length(CUBES[i].velocity) < 1 && vec3_length(CUBES[i].angular_velocity) < .3f) {
+			if (vec3_length(cube->velocity) < 1 && vec3_length(cube->angular_velocity) < .3f) {
 				RESTING_CUBES[i] = true;
 			}
 		}
@@ -458,63 +481,68 @@ void main_loop() {
 
 		const float time_of_impact = t_mid;
 
+		integrate_cube(cube, time_of_impact);
 		for (int j = 0; j < contact_manifold.num_points; j++) {
 			const Vec3 local_collision_point = contact_manifold.points[j];
 			const Vec3 collision_normal = contact_manifold.normals[j];
 
 
-
-			integrate_cube(&CUBES[i], time_of_impact);
-
-			/*
 			// Linear friction
-			const Vec3 linear_friction_force = vec3_scale(vec3_normalize(CUBES[i].velocity), normal_force * -LINEAR_FRICTION_COEFFICIENT / vec3_length(CUBES[i].velocity));
+			/*
+			const Vec3 linear_friction_force = vec3_scale(vec3_normalize(cube.velocity), normal_force * -LINEAR_FRICTION_COEFFICIENT / vec3_length(CUBES[i].velocity));
 			const Vec3 linear_friction_acceleration = vec3_div(linear_friction_force, CUBE_MASS);
-			CUBES[i].velocity = vec3_add(CUBES[i].velocity, vec3_scale(linear_friction_acceleration, time_of_impact));
-
-			// Rolling friction (converts angular velocity to linear velocity)
-			const Vec3 rolling_friction_force = vec3_scale(CUBES[i].angular_velocity, normal_force * -ROLLING_FRICTION_COEFFICIENT);
-			const Vec3 contact_velocity = vec3_scale(CUBES[i].angular_velocity, CUBE_SCALE.x / 2);
-			CUBES[i].velocity = vec3_add(CUBES[i].velocity, vec3_div(rolling_friction_force, CUBE_MASS / time_of_impact));
+			cube.velocity = vec3_add(CUBES[i].velocity, vec3_scale(linear_friction_acceleration, time_of_impact));
 			*/
 
-			// Calculate impulse
-			const Vec3 local_point_velocity = vec3_cross(CUBES[i].angular_velocity, local_collision_point);
-			const Vec3 point_velocity = vec3_add(CUBES[i].velocity, local_point_velocity);
+			// Normal impulse
+			const Vec3 local_point_velocity = vec3_cross(cube->angular_velocity, local_collision_point);
+			const Vec3 point_velocity = vec3_add(cube->velocity, local_point_velocity);
 			const float numerator = vec3_dot(vec3_scale(point_velocity, -(1 + COEFFICIENT_OF_RESTITUTION)), collision_normal);
 
 			const Vec3 mass_part = vec3_scale(collision_normal, 1 / CUBE_MASS);
-			const Vec3 inertia_part = vec3_cross(vec3_mul_mat3(vec3_cross(local_collision_point, collision_normal), &CUBES[i].inverse_inertia), local_collision_point);
+			const Vec3 inertia_part = vec3_cross(vec3_mul_mat3(vec3_cross(local_collision_point, collision_normal), &cube->inverse_inertia), local_collision_point);
 			const float denominator = vec3_dot(collision_normal, mass_part) + vec3_dot(collision_normal, inertia_part);
 
-			const float impulse_magnitude = numerator / denominator;
-			const Vec3 impulse = vec3_scale(collision_normal, impulse_magnitude);
+			const float normal_impulse_magnitude = numerator / denominator;
+			const Vec3 normal_impulse = vec3_scale(collision_normal, normal_impulse_magnitude);
 
-			total_linear_impulse = vec3_add(total_linear_impulse, vec3_div(impulse, CUBE_MASS));
-			total_angular_impulse = vec3_add(total_angular_impulse, vec3_mul_mat3(vec3_cross(local_collision_point, impulse), &CUBES[i].inverse_inertia));
+			// Tangential impulse
+			const Vec3 contact_velocity = vec3_add(cube->velocity, vec3_cross(cube->angular_velocity, local_collision_point));
+			// TODO: Change this to actually calculate the tangential plane
+			const Vec3 tangential_velocity = new_vec3(contact_velocity.x, 0, contact_velocity.z);
+
+			const float tangential_impulse_magnitude_max = LINEAR_FRICTION_COEFFICIENT * normal_impulse_magnitude;
+			const float tangential_impulse_magnitude = fmin(vec3_length(tangential_velocity), tangential_impulse_magnitude_max);
+			const Vec3 tangential_impulse = vec3_scale(vec3_normalize(tangential_velocity), -tangential_impulse_magnitude);
+
+			// Sum impulses
+			total_linear_impulse = vec3_add(total_linear_impulse, vec3_div(vec3_add(normal_impulse, tangential_impulse), CUBE_MASS));
+			total_angular_impulse = vec3_add(total_angular_impulse, vec3_mul_mat3(vec3_cross(local_collision_point, normal_impulse), &cube->inverse_inertia));
 		}
 
 		// Collision response
 		if (contact_manifold.num_points > 0) {
 			// Apply impulses
-			CUBES[i].velocity = vec3_add(CUBES[i].velocity, vec3_div(total_linear_impulse, contact_manifold.num_points));
-			CUBES[i].angular_velocity = vec3_add(CUBES[i].angular_velocity, vec3_div(total_angular_impulse, contact_manifold.num_points));
+			cube->velocity = vec3_add(cube->velocity, vec3_div(total_linear_impulse, contact_manifold.num_points));
+			cube->angular_velocity = vec3_add(cube->angular_velocity, vec3_div(total_angular_impulse, contact_manifold.num_points));
 
 			for (int j = 0; j < contact_manifold.num_points; j++) {
 				// Correct penetration
-				CUBES[i].position = vec3_add(CUBES[i].position, vec3_scale(contact_manifold.normals[j], -contact_manifold.depths[j]));
+				cube->position = vec3_add(cube->position, vec3_scale(contact_manifold.normals[j], -contact_manifold.depths[j]));
 
 				// Torsional friction
 				// FIX: I think this is missing something (normal force?)
 				Vec3 torsional_friction_torque = vec3_scale(contact_manifold.normals[j], -TORSIONAL_FRICTION_COEFFICIENT);
-				const Vec3 torsional_friction_torque_limit = vec3_div(vec3_mul_mat3(CUBES[i].angular_velocity, &CUBES[i].inertia), time_of_impact);
+				const Vec3 torsional_friction_torque_limit = vec3_div(vec3_mul_mat3(cube->angular_velocity, &cube->inertia), time_of_impact);
 				if (vec3_length(torsional_friction_torque) > vec3_length(torsional_friction_torque_limit)) {
 					torsional_friction_torque = vec3_scale(vec3_normalize(torsional_friction_torque), vec3_length(torsional_friction_torque_limit));
 				}
 
-				const Vec3 torsional_friction_acceleration = vec3_mul_mat3(vec3_mul_mat3(torsional_friction_torque, &CUBES[i].orientation), &CUBES[i].inverse_inertia);
-				CUBES[i].angular_velocity = vec3_add(CUBES[i].angular_velocity, vec3_scale(torsional_friction_acceleration, time_of_impact));
+				const Vec3 torsional_friction_acceleration = vec3_mul_mat3(vec3_mul_mat3(torsional_friction_torque, &cube->orientation), &cube->inverse_inertia);
+				cube->angular_velocity = vec3_add(cube->angular_velocity, vec3_scale(torsional_friction_acceleration, time_of_impact));
 			}
+
+			sleep = true;
 		}
 	}
 
@@ -528,7 +556,7 @@ void main_loop() {
 			continue;
 		}
 
-		integrate_cube(&CUBES[i], DELTA_TIME);
+		integrate_cube(&CUBES[i], (float)DELTA_TIME);
 	}
 
 	// Rendering
@@ -553,7 +581,7 @@ void main_loop() {
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-	draw_collision_points();
+	//draw_collision_points();
 
 	// Update delta time
 	const double post_draw_time_ms = get_time_ms();
