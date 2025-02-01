@@ -39,6 +39,11 @@ HWND create_window(HINSTANCE instance) {
 	window_class.hInstance = instance;
 	window_class.lpszClassName = "kinesis";
 
+	RECT rect = { 0, 0, 800, 600 };
+	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+	const int adjusted_width = rect.right - rect.left;
+	const int adjusted_height = rect.bottom - rect.top;
+
 	if (RegisterClass(&window_class)) {
 		HWND hwnd = CreateWindowEx(
 			0,
@@ -47,8 +52,8 @@ HWND create_window(HINSTANCE instance) {
 			WS_OVERLAPPEDWINDOW | WS_VISIBLE,
 			CW_USEDEFAULT,
 			CW_USEDEFAULT,
-			800,
-			600,
+			adjusted_width,
+			adjusted_height,
 			0,
 			0,
 			instance,
