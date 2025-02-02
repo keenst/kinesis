@@ -45,9 +45,9 @@ Vec3 vec3_div(const Vec3 a, const float b) {
 
 Vec3 vec3_mul_mat3(const Vec3 a, const Mat3* const b) {
 	return (Vec3){
-		a.x * b->m[0][0] + a.x * b->m[0][1] + a.x * b->m[0][2],
-		a.y * b->m[1][0] + a.y * b->m[1][1] + a.y * b->m[1][2],
-		a.z * b->m[2][0] + a.z * b->m[2][1] + a.z * b->m[2][2]
+		a.x * b->m[0][0] + a.y * b->m[0][1] + a.z * b->m[0][2],
+		a.x * b->m[1][0] + a.y * b->m[1][1] + a.z * b->m[1][2],
+		a.x * b->m[2][0] + a.y * b->m[2][1] + a.z * b->m[2][2]
 	};
 }
 
