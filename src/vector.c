@@ -28,6 +28,10 @@ Vec3 vec4_to_vec3(const Vec4 vec4) {
 	return new_vec3(vec4.x, vec4.y, vec4.z);
 }
 
+Vec4 vec3_to_vec4(const Vec3 vec3) {
+	return new_vec4(vec3.x, vec3.y, vec3.z, 1);
+}
+
 Vec4 new_vec4(const float x, const float y, const float z, const float w) {
 	return (Vec4){ x, y, z, w };
 }
