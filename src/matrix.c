@@ -6,8 +6,8 @@
 Mat3 mat3_inverse(const Mat3* const matrix) {
 	const float determinant =
 		matrix->m[0][0] * (matrix->m[1][1] * matrix->m[2][2] - matrix->m[1][2] * matrix->m[2][1]) -
-		matrix->m[0][1] * (matrix->m[1][0] * matrix->m[2][2] - matrix->m[1][2] * matrix->m[2][0]) +
-		matrix->m[0][2] * (matrix->m[1][0] * matrix->m[2][1] - matrix->m[1][1] * matrix->m[2][0]);
+		matrix->m[1][0] * (matrix->m[0][1] * matrix->m[2][2] - matrix->m[2][1] * matrix->m[0][2]) +
+		matrix->m[2][0] * (matrix->m[0][1] * matrix->m[1][2] - matrix->m[1][1] * matrix->m[0][2]);
 
 	if (determinant == 0) {
 		return *matrix;
@@ -17,17 +17,17 @@ Mat3 mat3_inverse(const Mat3* const matrix) {
 
 	Mat3 inverse;
 
-	inverse.m[0][0] =  (matrix->m[1][1] * matrix->m[2][2] - matrix->m[1][2] * matrix->m[2][1]) * inverse_determinant;
-	inverse.m[0][1] = -(matrix->m[0][1] * matrix->m[2][2] - matrix->m[0][2] * matrix->m[2][1]) * inverse_determinant;
-	inverse.m[0][2] =  (matrix->m[0][1] * matrix->m[1][1] - matrix->m[0][2] * matrix->m[1][1]) * inverse_determinant;
+	inverse.m[0][0] = (matrix->m[1][1] * matrix->m[2][2] - matrix->m[1][2] * matrix->m[2][1]) * inverse_determinant;
+	inverse.m[0][1] = (matrix->m[2][1] * matrix->m[0][2] - matrix->m[0][1] * matrix->m[2][2]) * inverse_determinant;
+	inverse.m[0][2] = (matrix->m[0][1] * matrix->m[1][2] - matrix->m[0][2] * matrix->m[1][1]) * inverse_determinant;
 
-	inverse.m[1][0] = -(matrix->m[1][0] * matrix->m[2][2] - matrix->m[1][2] * matrix->m[2][0]) * inverse_determinant;
-	inverse.m[1][1] =  (matrix->m[0][0] * matrix->m[2][2] - matrix->m[0][2] * matrix->m[2][0]) * inverse_determinant;
-	inverse.m[1][2] = -(matrix->m[0][0] * matrix->m[1][2] - matrix->m[0][2] * matrix->m[1][2]) * inverse_determinant;
+	inverse.m[1][0] = (matrix->m[2][0] * matrix->m[1][2] - matrix->m[1][0] * matrix->m[2][2]) * inverse_determinant;
+	inverse.m[1][1] = (matrix->m[0][0] * matrix->m[2][2] - matrix->m[2][0] * matrix->m[0][2]) * inverse_determinant;
+	inverse.m[1][2] = (matrix->m[0][2] * matrix->m[1][0] - matrix->m[0][0] * matrix->m[1][2]) * inverse_determinant;
 
-	inverse.m[2][0] =  (matrix->m[1][0] * matrix->m[2][1] - matrix->m[1][1] * matrix->m[2][0]) * inverse_determinant;
-	inverse.m[2][1] = -(matrix->m[0][0] * matrix->m[2][1] - matrix->m[0][1] * matrix->m[2][0]) * inverse_determinant;
-	inverse.m[2][2] =  (matrix->m[0][0] * matrix->m[1][1] - matrix->m[0][1] * matrix->m[1][0]) * inverse_determinant;
+	inverse.m[2][0] = (matrix->m[1][0] * matrix->m[2][1] - matrix->m[2][0] * matrix->m[1][1]) * inverse_determinant;
+	inverse.m[2][1] = (matrix->m[0][1] * matrix->m[2][0] - matrix->m[0][0] * matrix->m[2][1]) * inverse_determinant;
+	inverse.m[2][2] = (matrix->m[0][0] * matrix->m[1][1] - matrix->m[0][1] * matrix->m[1][0]) * inverse_determinant;
 
 	return inverse;
 }

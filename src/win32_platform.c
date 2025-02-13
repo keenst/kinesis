@@ -3,9 +3,13 @@
 #include "glad/gl.h"
 #include "glad/wgl.h"
 #include "main.h"
+#include "platform.h"
 
 bool RUNNING = true;
 bool GL_LOADED = false;
+Inputs INPUT_BUFFER = {};
+
+bool MOUSE_LEFT_DOWN = false;
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
 	LRESULT result = 0;
@@ -21,8 +25,27 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
 			if (!GL_LOADED) {
 				break;
 			}
-
+			// TODO: Change this to the proper screen size, without border and whatnot
 			glViewport(0, 0, LOWORD(l_param), HIWORD(l_param));
+		} break;
+		case WM_KEYDOWN: {
+			switch (w_param) {
+				case VK_SPACE: {
+					INPUT_BUFFER.pause = true;
+				} break;
+				case VK_TAB: {
+					INPUT_BUFFER.toggle_wireframe = true;
+				} break;
+				case 'R': {
+					INPUT_BUFFER.reset_simulation = true;
+				} break;
+			}
+		} break;
+		case WM_LBUTTONDOWN: {
+			MOUSE_LEFT_DOWN = true;
+		} break;
+		case WM_LBUTTONUP: {
+			MOUSE_LEFT_DOWN = false;
 		} break;
 		default: {
 			result = DefWindowProc(window, message, w_param, l_param);
@@ -151,13 +174,24 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line
 
 	startup(argc, argv);
 
+	Inputs old_inputs = {};
+
 	MSG message;
 	while (RUNNING) {
 		while (PeekMessage(&message, NULL, 0, 0, PM_REMOVE)) {
 			DispatchMessage(&message);
 		}
 
-		main_loop();
+		POINT cursor_pos;
+		GetCursorPos(&cursor_pos);
+		INPUT_BUFFER.mouse_pos.x = cursor_pos.x;
+		INPUT_BUFFER.mouse_pos.y = cursor_pos.y;
+
+		INPUT_BUFFER.mouse_left = MOUSE_LEFT_DOWN;
+
+		main_loop(old_inputs, INPUT_BUFFER);
+		old_inputs = INPUT_BUFFER;
+		INPUT_BUFFER = (Inputs){};
 
 		SwapBuffers(device_context);
 	}

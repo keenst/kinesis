@@ -4,9 +4,11 @@
 #include "math_ops.h"
 #include "math_helper.h"
 #include "win32_time.h"
+#include "main.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <float.h>
+#include <string.h>
 
 typedef struct {
 	int index;
@@ -17,6 +19,7 @@ typedef struct {
 
 	// Gets updated on integration
 	Mat4 transform;
+	Mat4 inverse_transform;
 
 	Vec3 velocity;
 	Vec3 angular_velocity;
@@ -40,7 +43,9 @@ typedef struct {
 	Vec3 normal;
 	Cube* cube_a;
 	Cube* cube_b;
-	Vec3 points[MANIFOLD_POINTS]; // Contact points in local space
+	//Vec3 world_points[MANIFOLD_POINTS]; // Contact points in world space
+	Vec3 local_points_a[MANIFOLD_POINTS];
+	Vec3 local_points_b[MANIFOLD_POINTS];
 	float depths[MANIFOLD_POINTS];
 } ContactManifold;
 
@@ -53,6 +58,8 @@ unsigned int COLLISION_POINTS_VAO;
 unsigned int LINE_VAO;
 unsigned int LINE_VBO;
 
+Vec3 CAMERA_POSITION = { -40, 50, -40 };
+
 Mat4 VIEW;
 Mat4 PROJECTION;
 
@@ -62,7 +69,11 @@ double PREV_TIME_MS = 0;
 float TOTAL_TIME_MS = 0;
 double DELTA_TIME = 1.f / 60;
 
-bool IS_FIRST_FRAME = true;
+bool IS_PAUSED;
+bool IS_SLEEPING;
+double SLEEP_END_TIME;
+
+bool IS_WIREFRAME;
 
 static const Vec3 LIGHT_COLOR = { 1, 1, 1 };
 static const Vec3 LIGHT_DIR = { -0.2f, -0.1f, -0.3f };
@@ -92,9 +103,29 @@ enum { COLLISION_POINT_BUFFER_SIZE = 5 };
 Vec3 COLLISION_POINT_BUFFER[COLLISION_POINT_BUFFER_SIZE] = {};
 unsigned int NEXT_COLLISION_POINT_BUFFER_INDEX = 0;
 
+enum { COLLISION_NORMAL_BUFFER_SIZE = 1 };
+Vec3 COLLISION_NORMAL_BUFFER[COLLISION_NORMAL_BUFFER_SIZE][2] = {};
+Vec3 COLLISION_EDGES_BUFFER[COLLISION_NORMAL_BUFFER_SIZE][4] = {};
+unsigned int NEXT_COLLISION_NORMAL_BUFFER_INDEX = 0;
+unsigned int NEXT_COLLISION_EDGES_BUFFER_INDNEX = 0;
+
 void buffer_collision_point(const Vec3 point) {
 	COLLISION_POINT_BUFFER[NEXT_COLLISION_POINT_BUFFER_INDEX] = point;
 	NEXT_COLLISION_POINT_BUFFER_INDEX = (NEXT_COLLISION_POINT_BUFFER_INDEX + 1) % COLLISION_POINT_BUFFER_SIZE;
+}
+
+void buffer_collision_normal(const Vec3 position, const Vec3 direction) {
+	COLLISION_NORMAL_BUFFER[NEXT_COLLISION_NORMAL_BUFFER_INDEX][0] = position;
+	COLLISION_NORMAL_BUFFER[NEXT_COLLISION_NORMAL_BUFFER_INDEX][1] = direction;
+	NEXT_COLLISION_NORMAL_BUFFER_INDEX = (NEXT_COLLISION_NORMAL_BUFFER_INDEX + 1) % COLLISION_NORMAL_BUFFER_SIZE;
+}
+
+void buffer_collision_edges(const Vec3 edge_a_start, const Vec3 edge_a_dir, const Vec3 edge_b_start, const Vec3 edge_b_dir)  {
+	COLLISION_EDGES_BUFFER[NEXT_COLLISION_NORMAL_BUFFER_INDEX][0] = edge_a_start;
+	COLLISION_EDGES_BUFFER[NEXT_COLLISION_NORMAL_BUFFER_INDEX][1] = edge_a_dir;
+	COLLISION_EDGES_BUFFER[NEXT_COLLISION_NORMAL_BUFFER_INDEX][2] = edge_b_start;
+	COLLISION_EDGES_BUFFER[NEXT_COLLISION_NORMAL_BUFFER_INDEX][3] = edge_b_dir;
+	NEXT_COLLISION_EDGES_BUFFER_INDNEX = (NEXT_COLLISION_EDGES_BUFFER_INDNEX + 1) % COLLISION_NORMAL_BUFFER_SIZE;
 }
 
 void draw_collision_points() {
@@ -124,10 +155,10 @@ void draw_cubes() {
 	}
 }
 
-void draw_line(const Vec3 start, const Vec3 end, const Vec3 color) {
+void draw_line(const Vec3 start, const Vec3 dir, const Vec3 color) {
 	const float vertices[] = {
 		0, 0, 0,
-		end.x, end.y, end.z
+		dir.x, dir.y, dir.z
 	};
 
 	glBindVertexArray(LINE_VAO);
@@ -146,6 +177,27 @@ void draw_line(const Vec3 start, const Vec3 end, const Vec3 color) {
 	glDrawArrays(GL_LINES, 0, 2);
 }
 
+void draw_collision_normals() {
+	for (int i = 0; i < COLLISION_NORMAL_BUFFER_SIZE; i++) {
+		const Vec3 start = COLLISION_NORMAL_BUFFER[i][0];
+		const Vec3 end = vec3_scale(COLLISION_NORMAL_BUFFER[i][1], 5);
+
+		draw_line(start, end, new_vec3(1, 0, 1));
+	}
+}
+
+void draw_collision_edges() {
+	for (int i = 0; i < COLLISION_NORMAL_BUFFER_SIZE; i++) {
+		const Vec3 edge_a_start = COLLISION_EDGES_BUFFER[i][0];
+		const Vec3 edge_a_end = COLLISION_EDGES_BUFFER[i][1];
+		const Vec3 edge_b_start = COLLISION_EDGES_BUFFER[i][2];
+		const Vec3 edge_b_end = COLLISION_EDGES_BUFFER[i][3];
+
+		draw_line(edge_a_start, edge_a_end, new_vec3(1, 1, 1));
+		draw_line(edge_b_start, edge_b_end, new_vec3(1, 1, 1));
+	}
+}
+
 void draw_cube_vectors() {
 	for (int i = 0; i < MAX_CUBES; i++) {
 		if (!ACTIVE_CUBES[i]) {
@@ -159,14 +211,32 @@ void draw_cube_vectors() {
 }
 
 void update_transform(Cube* const cube) {
-	Mat3 model_mat3 = mat3_mul(&cube->scale, &cube->orientation);
-	Mat4 transform = mat3_to_mat4(&model_mat3);
+	// Compute transformation matrix
+	Mat4 transform = MAT4_IDENTITY;
 	transform = mat4_translate(&transform, cube->position);
+	transform = mat4_mul(transform, mat3_to_mat4(&cube->orientation));
+	transform = mat4_mul(transform, mat3_to_mat4(&cube->scale));
 	cube->transform = transform;
+
+	// Compute inverse transformation matrix
+	const Mat3 inverse_orientation = mat3_inverse(&cube->orientation);
+	const Mat3 inverse_scale = mat3_inverse(&cube->scale);
+	const Vec3 inverse_translation = vec3_scale(vec3_mul_mat3(vec3_mul_mat3(cube->position, &inverse_scale), &inverse_orientation), -1);
+
+	Mat3 inverse_transform_mat3 = MAT3_IDENTITY;
+	inverse_transform_mat3 = mat3_mul(&inverse_transform_mat3, &inverse_orientation);
+	inverse_transform_mat3 = mat3_mul(&inverse_transform_mat3, &inverse_scale);
+	Mat4 inverse_transform = mat3_to_mat4(&inverse_transform_mat3);
+	inverse_transform = mat4_translate(&inverse_transform, inverse_translation);
+	cube->inverse_transform = inverse_transform;
 }
 
-void startup(int argc, char** argv) {
+void start_simulation() {
+	// Reset resting
+	memset(RESTING_CUBES, 0, sizeof(RESTING_CUBES));
+
 	// Init cubes
+	CUBES[0] = (Cube){};
 	CUBES[0].position = new_vec3(0, 20, 0);
 	CUBES[0].scale = mat3_scale(&MAT3_IDENTITY, CUBE_SCALE);
 	//CUBES[0].orientation = mat3_rotate(&MAT3_IDENTITY, 0, new_vec3(0, 1, 0));
@@ -179,6 +249,7 @@ void startup(int argc, char** argv) {
 	update_transform(&CUBES[0]);
 	ACTIVE_CUBES[0] = true;
 
+	CUBES[1] = (Cube){};
 	CUBES[1].position = new_vec3(0, 30, 0);
 	//CUBES[1].position = new_vec3(0, 10, 10);
 	CUBES[1].scale = mat3_scale(&MAT3_IDENTITY, CUBE_SCALE);
@@ -191,7 +262,9 @@ void startup(int argc, char** argv) {
 	CUBES[1].index = 1;
 	update_transform(&CUBES[1]);
 	ACTIVE_CUBES[1] = true;
+}
 
+void startup(int argc, char** argv) {
 	// Init plane
 	PLANE_TRANSFORM = mat4_scale(&MAT4_IDENTITY, new_vec3(50, 1, 50));
 
@@ -337,8 +410,11 @@ void startup(int argc, char** argv) {
 
 	PROJECTION = mat4_perspective(45, 800.f / 600, 0.1f, 1000);
 
-	VIEW = mat4_look_at(new_vec3(-40, 50, -40), new_vec3(0, 0, 0), new_vec3(0, 1, 0));
-	//VIEW = mat4_look_at(new_vec3(-40, 0, -40), new_vec3(0, 0, 0), new_vec3(0, 1, 0));
+	//VIEW = mat4_look_at(new_vec3(-40, 50, -40), new_vec3(0, 0, 0), new_vec3(0, 1, 0));
+	//VIEW = mat4_look_at(new_vec3(40, 0, -40), new_vec3(0, 0, 0), new_vec3(0, 1, 0));
+	//VIEW = mat4_look_at(new_vec3(1, 60, 0), new_vec3(0, 0, 0), new_vec3(0, 1, 0));
+
+	start_simulation();
 }
 
 bool cube_is_resting(const int index) {
@@ -410,6 +486,16 @@ void integrate_cube(Cube* const cube, const float t) {
 	update_transform(cube);
 }
 
+void sim_sleep_ms(float time_ms) {
+	IS_SLEEPING = true;
+	SLEEP_END_TIME = get_time_ms() + time_ms;
+}
+
+// Pauses the simulation until the user unpauses
+void sim_pause() {
+	IS_PAUSED = true;
+}
+
 // Checks for collisions and contacts.
 // t = 0 is start of frame,
 // t = DELTA_TIME is end of frame
@@ -428,15 +514,14 @@ bool collision_check_floor(ContactManifold* const contact_manifold, Cube* const 
 		const float x = (i & 1) ? 0.5f : -0.5f;
 		const float y = (i & 2) ? 0.5f : -0.5f;
 		const float z = (i & 4) ? 0.5f : -0.5f;
-		const Vec4 world_point = vec4_mul_mat4(new_vec4(x, y, z, 1), &cube_transform);
+		const Vec4 world_point_h = vec4_mul_mat4(new_vec4(x, y, z, 1), &cube_transform);
 
-		if (world_point.y < COLLISION_DIST_TOLERANCE) {
-			buffer_collision_point(vec4_to_vec3(world_point));
+		if (world_point_h.y < COLLISION_DIST_TOLERANCE) {
 			no_collisions = false;
 
 			if (contact_manifold) {
-				contact_manifold->points[contact_manifold->num_points] = new_vec3(x, y, z);
-				contact_manifold->depths[contact_manifold->num_points] = world_point.y;
+				contact_manifold->local_points_a[contact_manifold->num_points] = new_vec3(x, y, z);
+				contact_manifold->depths[contact_manifold->num_points] = world_point_h.y;
 				contact_manifold->normal = new_vec3(0, 1, 0);
 				contact_manifold->num_points++;
 				contact_manifold->cube_a = cube;
@@ -452,66 +537,140 @@ bool collision_check_floor(ContactManifold* const contact_manifold, Cube* const 
 	return !no_collisions;
 }
 
+Vec3 lerp_line_segment(const Vec3 start, const Vec3 end, const float t) {
+	return vec3_add(start, vec3_scale(end, t));
+}
+
+// Returns minimum distance between lines
+float closest_points_line_segments(const Vec3 a_start, const Vec3 a_end, const Vec3 b_start, const Vec3 b_end, Vec3* const point_a, Vec3* const point_b) {
+	const Vec3 a_dir = vec3_sub(a_end, a_start);
+	const Vec3 b_dir = vec3_sub(b_end, b_start);
+
+	// Variables for system of equations
+	// ax + by = e
+	// cx + dy = f
+	const float a = vec3_dot(b_dir, a_dir);
+	const float b = -vec3_dot(a_dir, a_dir);
+	const float c = vec3_dot(b_dir, b_dir);
+	const float d = -vec3_dot(a_dir, b_dir);
+	const float e = -vec3_dot(b_start, a_dir) + vec3_dot(a_start, a_dir);
+	const float f = -vec3_dot(b_start, b_dir) + vec3_dot(a_start, b_dir);
+
+	// Solve system of equations
+	float s = (e * d - b * f) / (a * d - b * c);
+	float t = (a * f - e * c) / (a * d - b * c);
+
+	// Clamp to make sure the points are on the line
+	s = fminf(fmaxf(s, 0), 1);
+	t = fminf(fmaxf(t, 0), 1);
+
+	// Compute points
+	*point_a = vec3_add(a_start, vec3_scale(a_dir, t));
+	*point_b = vec3_add(b_start, vec3_scale(b_dir, s));
+
+	// Return distance between points
+	const Vec3 dist_vec = vec3_sub(*point_b, *point_a);
+	return vec3_length(dist_vec);
+}
+
+float lowest_cross = FLT_MAX;
+
 bool collision_check_cubes(ContactManifold* const contact_manifold, Cube* const cube_a, Cube* const cube_b, const float t) {
 	Mat4 cube_a_transform = cube_a->transform;
 	Mat4 cube_b_transform = cube_b->transform;
+	Mat4 cube_a_inverse_transform = cube_a->inverse_transform;
+	Mat4 cube_b_inverse_transform = cube_b->inverse_transform;
 	Mat3 cube_a_orientation = cube_a->orientation;
 	Mat3 cube_b_orientation = cube_b->orientation;
+	Vec3 cube_a_position = cube_a->position;
+	Vec3 cube_b_position = cube_b->position;
+	Cube cube_a_copy = *cube_a;
+	Cube cube_b_copy = *cube_b;
 	if (t != 0) {
-		Cube cube_a_copy = *cube_a;
 		integrate_cube(&cube_a_copy, t);
 		cube_a_transform = cube_a_copy.transform;
+		cube_a_inverse_transform = cube_a_copy.inverse_transform;
 		cube_a_orientation = cube_a_copy.orientation;
+		cube_a_position = cube_a_copy.position;
 
-		Cube cube_b_copy = *cube_b;
 		integrate_cube(&cube_b_copy, t);
 		cube_b_transform = cube_b_copy.transform;
+		cube_b_inverse_transform = cube_b_copy.inverse_transform;
 		cube_b_orientation = cube_b_copy.orientation;
+		cube_b_position = cube_b_copy.position;
 	}
 
-	Vec3 local_normals[6];
-	local_normals[0] = new_vec3(1, 0, 0);
-	local_normals[1] = new_vec3(0, 1, 0);
-	local_normals[2] = new_vec3(0, 0, 1);
-	local_normals[3] = new_vec3(1, 0, 0);
-	local_normals[4] = new_vec3(0, 1, 0);
-	local_normals[5] = new_vec3(0, 0, 1);
+	Vec3 normals[15];
+	// Face normals
+	normals[0] = vec3_normalize(vec3_mul_mat3(new_vec3(1, 0, 0), &cube_a_orientation));
+	normals[1] = vec3_normalize(vec3_mul_mat3(new_vec3(0, 1, 0), &cube_a_orientation));
+	normals[2] = vec3_normalize(vec3_mul_mat3(new_vec3(0, 0, 1), &cube_a_orientation));
+	normals[3] = vec3_normalize(vec3_mul_mat3(new_vec3(1, 0, 0), &cube_b_orientation));
+	normals[4] = vec3_normalize(vec3_mul_mat3(new_vec3(0, 1, 0), &cube_b_orientation));
+	normals[5] = vec3_normalize(vec3_mul_mat3(new_vec3(0, 0, 1), &cube_b_orientation));
+	// Edge normals (cross products between edges on both cubes)
+	normals[6] = vec3_normalize(vec3_cross(normals[0], normals[3]));
+	normals[7] = vec3_normalize(vec3_cross(normals[1], normals[3]));
+	normals[8] = vec3_normalize(vec3_cross(normals[2], normals[3]));
+	normals[9] = vec3_normalize(vec3_cross(normals[0], normals[4]));
+	normals[10] = vec3_normalize(vec3_cross(normals[1], normals[4]));
+	normals[11] = vec3_normalize(vec3_cross(normals[2], normals[4]));
+	normals[12] = vec3_normalize(vec3_cross(normals[0], normals[5]));
+	normals[13] = vec3_normalize(vec3_cross(normals[1], normals[5]));
+	normals[14] = vec3_normalize(vec3_cross(normals[2], normals[5]));
 
-	Vec3 world_normals[6];
 	/*
-	world_normals[0] = vec3_normalize(vec4_to_vec3(vec4_mul_mat4(local_normals[0], &cube_a_transform)));
-	world_normals[1] = vec3_normalize(vec4_to_vec3(vec4_mul_mat4(local_normals[1], &cube_a_transform)));
-	world_normals[2] = vec3_normalize(vec4_to_vec3(vec4_mul_mat4(local_normals[2], &cube_a_transform)));
-	world_normals[3] = vec3_normalize(vec4_to_vec3(vec4_mul_mat4(local_normals[3], &cube_b_transform)));
-	world_normals[4] = vec3_normalize(vec4_to_vec3(vec4_mul_mat4(local_normals[4], &cube_b_transform)));
-	world_normals[5] = vec3_normalize(vec4_to_vec3(vec4_mul_mat4(local_normals[5], &cube_b_transform)));
+	const Vec3 vertices[8] = {
+		{ -0.5f, -0.5f, -0.5f }, { 0.5f, -0.5f, -0.5f }, { 0.5f, 0.5f, -0.5f }, { -0.5f, 0.5f, -0.5f },
+		{ -0.5f, -0.5f, 0.5f }, { 0.5f, -0.5f, 0.5f }, { 0.5f, 0.5f, 0.5f }, { -0.5f, 0.5f, 0.5f }
+	};
 	*/
-	world_normals[0] = vec3_normalize(vec3_mul_mat3(local_normals[0], &cube_a_orientation));
-	world_normals[1] = vec3_normalize(vec3_mul_mat3(local_normals[1], &cube_a_orientation));
-	world_normals[2] = vec3_normalize(vec3_mul_mat3(local_normals[2], &cube_a_orientation));
-	world_normals[3] = vec3_normalize(vec3_mul_mat3(local_normals[3], &cube_b_orientation));
-	world_normals[4] = vec3_normalize(vec3_mul_mat3(local_normals[4], &cube_b_orientation));
-	world_normals[5] = vec3_normalize(vec3_mul_mat3(local_normals[5], &cube_b_orientation));
 
+	const Vec3 vertices[8] = {
+		{ 0.5f, -0.5f, -0.5f }, { -0.5f, -0.5f, -0.5f }, { -0.5f, -0.5f, 0.5f }, { 0.5f, -0.5f, 0.5f },
+		{ 0.5f, 0.5f, -0.5f }, { -0.5f, 0.5f, -0.5f }, { -0.5f, 0.5f, 0.5f }, { 0.5f, 0.5f, 0.5f }
+	};
+
+	// Vertex indices of all edge pairs on a cube
+	const int edge_indices[12][2] = {
+		{ 0, 1 }, { 1, 2 }, { 2, 3 }, { 3, 0 }, // Bottom face
+		{ 4, 5 }, { 5, 6 }, { 6, 7 }, { 7, 4 }, // Top face
+		{ 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 } // Connecting the faces
+	};
+
+	typedef enum {
+		CORNER_TO_FACE,
+		EDGE_TO_EDGE
+	} CollisionType;
+
+	CollisionType collision_type;
 	Vec3 min_penetration_axis; // This is the same as collision normal
 	float min_penetration_depth = FLT_MAX;
 
+	// Values for corner-to-face collisions
+	const Cube* penetrated_cube; // The cube whose face is min_penetration_axis
+
+	// Values for edge-to-edge collisiosn
+	Vec3 edge_a_start;
+	Vec3 edge_a_end;
+	Vec3 edge_b_start;
+	Vec3 edge_b_end;
+
 	// Project the corners of both cubes onto all normals
-	for (int i = 0; i < 6; i++) {
+	for (int normal_index = 0; normal_index < 15; normal_index++) {
 		float a_min = FLT_MAX;
 		float b_min = FLT_MAX;
 		float a_max = -FLT_MAX;
 		float b_max = -FLT_MAX;
 
-		for (int j = 0; j < 8; j++) {
-			const float x = (j & 1) ? 0.5f : -0.5f;
-			const float y = (j & 2) ? 0.5f : -0.5f;
-			const float z = (j & 4) ? 0.5f : -0.5f;
-			const Vec4 world_point_a = vec4_mul_mat4(new_vec4(x, y, z, 1), &cube_a_transform);
-			const Vec4 world_point_b = vec4_mul_mat4(new_vec4(x, y, z, 1), &cube_b_transform);
+		for (int vertex_index = 0; vertex_index < 8; vertex_index++) {
+			const Vec3 vertex = vertices[vertex_index];
 
-			const float projection_a = vec3_dot(vec4_to_vec3(world_point_a), world_normals[i]);
-			const float projection_b = vec3_dot(vec4_to_vec3(world_point_b), world_normals[i]);
+			const Vec4 world_point_a = vec4_mul_mat4(vec3_to_vec4(vertex), &cube_a_transform);
+			const Vec4 world_point_b = vec4_mul_mat4(vec3_to_vec4(vertex), &cube_b_transform);
+
+			const float projection_a = vec3_dot(vec4_to_vec3(world_point_a), normals[normal_index]);
+			const float projection_b = vec3_dot(vec4_to_vec3(world_point_b), normals[normal_index]);
 
 			if (projection_a < a_min) {
 				a_min = projection_a;
@@ -531,55 +690,198 @@ bool collision_check_cubes(ContactManifold* const contact_manifold, Cube* const 
 			return false;
 		}
 
-		// Find axis of minimum penetration
-		float penetration_depth;
-		if (a_max < b_min) {
-			penetration_depth = fabs(a_max - b_min);
+		// If corner-to-face collision
+		if (normal_index < 6) {
+			// Find axis of minimum penetration
+			const float penetration_depth = fminf(fabsf(a_max - b_min), fabsf(b_max - a_min));
+			if (penetration_depth < min_penetration_depth) {
+				min_penetration_depth = penetration_depth;
+				min_penetration_axis = normals[normal_index];
+				collision_type = CORNER_TO_FACE;
+				if (normal_index < 3) {
+					penetrated_cube = &cube_a_copy;
+				} else {
+					penetrated_cube = &cube_b_copy;
+				}
+			}
+		// If edge-to-edge collision
 		} else {
-			penetration_depth = fabs(b_max - a_min);
-		}
+			// Find vectors parallel to collision edges
+			Vec3 normal_a; // Vector parallel to the collision edges on cube a
+			Vec3 normal_b;
 
-		if (penetration_depth < min_penetration_depth) {
-			min_penetration_depth = penetration_depth;
-			min_penetration_axis = world_normals[i];
+			normal_a = normals[(normal_index - 6) % 3];
+			if (normal_index - 6 < 3) {
+				normal_b = normals[3];
+			} else if (normal_index - 6 < 6) {
+				normal_b = normals[4];
+			} else {
+				normal_b = normals[5];
+			}
+
+			// Find the edges that are parallel to the normals
+			Vec3 edges_a[4][2];
+			Vec3 edges_b[4][2];
+			int num_edges_a = 0;
+			int num_edges_b = 0;
+			for (int edge_index = 0; edge_index < 12; edge_index++) {
+				const Vec3 start_vertex = vertices[edge_indices[edge_index][0]];
+				const Vec3 end_vertex = vertices[edge_indices[edge_index][1]];
+
+				const Vec3 start_vertex_a = vec3_mul_mat4(start_vertex, &cube_a_transform);
+				const Vec3 end_vertex_a = vec3_mul_mat4(end_vertex, &cube_a_transform);
+				const Vec3 start_vertex_b = vec3_mul_mat4(start_vertex, &cube_b_transform);
+				const Vec3 end_vertex_b = vec3_mul_mat4(end_vertex, &cube_b_transform);
+
+				const Vec3 edge_a = vec3_sub(end_vertex_a, start_vertex_a);
+				const Vec3 edge_b = vec3_sub(end_vertex_b, start_vertex_b);
+
+				const Vec3 cross_product_a = vec3_cross(normal_a, edge_a);
+				if (fabsf(vec3_length(cross_product_a)) < 0.001) {
+					const Vec3 edge_start = vec4_to_vec3(vec4_mul_mat4(vec3_to_vec4(vertices[edge_indices[edge_index][0]]), &cube_a_transform));
+					const Vec3 edge_end = vec4_to_vec3(vec4_mul_mat4(vec3_to_vec4(vertices[edge_indices[edge_index][1]]), &cube_a_transform));
+					edges_a[num_edges_a][0] = edge_start;
+					edges_a[num_edges_a++][1] = edge_end;
+				}
+
+				const Vec3 cross_product_b = vec3_cross(normal_b, edge_b);
+				if (fabsf(vec3_length(cross_product_b)) < 0.001) {
+					const Vec3 edge_start = vec4_to_vec3(vec4_mul_mat4(vec3_to_vec4(vertices[edge_indices[edge_index][0]]), &cube_b_transform));
+					const Vec3 edge_end = vec4_to_vec3(vec4_mul_mat4(vec3_to_vec4(vertices[edge_indices[edge_index][1]]), &cube_b_transform));
+					edges_b[num_edges_b][0] = edge_start;
+					edges_b[num_edges_b++][1] = edge_end;
+				}
+				int x = 5;
+			}
+
+			// Find edges of collision
+			Vec3 potential_edge_a_start;
+			Vec3 potential_edge_a_end;
+			Vec3 potential_edge_b_start;
+			Vec3 potential_edge_b_end;
+
+			float min_distance = FLT_MAX;
+			for (int edge_index_a = 0; edge_index_a < num_edges_a; edge_index_a++) {
+				const Vec3 start_vertex_a = edges_a[edge_index_a][0];
+				const Vec3 end_vertex_a = edges_a[edge_index_a][1];
+
+				for (int edge_index_b = 0; edge_index_b < num_edges_b; edge_index_b++) {
+					const Vec3 start_vertex_b = edges_b[edge_index_b][0];
+					const Vec3 end_vertex_b = edges_b[edge_index_b][1];
+
+					Vec3 point_a, point_b;
+					const float distance = closest_points_line_segments(start_vertex_a, end_vertex_a, start_vertex_b, end_vertex_b, &point_a, &point_b);
+
+					if (distance < min_distance) {
+						min_distance = distance;
+
+						potential_edge_a_start = start_vertex_a;
+						potential_edge_a_end = end_vertex_a;
+						potential_edge_b_start = start_vertex_b;
+						potential_edge_b_end = end_vertex_b;
+					}
+				}
+			}
+
+			if (min_distance < min_penetration_depth) {
+				collision_type = EDGE_TO_EDGE;
+
+				min_penetration_depth = min_distance;
+
+				// Check if normal should be flipped
+				const Vec3 displacement = vec3_sub(cube_b_position, cube_a_position);
+				if (vec3_dot(displacement, normals[normal_index]) > 0) {
+					min_penetration_axis = vec3_scale(normals[normal_index], -1);
+				} else {
+					min_penetration_axis = normals[normal_index];
+				}
+
+				edge_a_start = potential_edge_a_start;
+				edge_a_end = potential_edge_a_end;
+				edge_b_start = potential_edge_b_start;
+				edge_b_end = potential_edge_b_end;
+			}
 		}
 	}
 
-	// Use the minimum penetration axis to calculate the point of contact
-	// Find the corner of the penetrating cube that is furthest along the collision normal
+	Vec3 contact_point_a;
+	Vec3 contact_point_b;
 	float max_penetration_depth = -FLT_MAX;
-	Vec3 contact_point;
-	for (int i = 0; i < 8; i++) {
-		const float x = (i & 1) ? 0.5f : -0.5f;
-		const float y = (i & 2) ? 0.5f : -0.5f;
-		const float z = (i & 4) ? 0.5f : -0.5f;
-		const Vec3 local_point = new_vec3(x, y, z);
 
-		float penetration_depth = vec3_dot(local_point, min_penetration_axis);
-		if (penetration_depth > max_penetration_depth) {
-			max_penetration_depth = penetration_depth;
-			contact_point = local_point;
+	// Find the contact points
+	if (collision_type == CORNER_TO_FACE) {
+		printf("face\n");
+		// Use the minimum penetration axis to calculate the point of contact
+		// Find the corner of the penetrating cube that is furthest along the collision normal
+		Vec3 contact_point;
+		for (int vertex_index = 0; vertex_index < 8; vertex_index++) {
+			const Vec3 local_point = vertices[vertex_index];
+
+			const float penetration_depth = vec3_dot(local_point, min_penetration_axis);
+			if (penetration_depth > max_penetration_depth) {
+				max_penetration_depth = penetration_depth;
+				const Vec4 local_point_h = vec3_to_vec4(local_point);
+				const Vec4 world_point_h = vec4_mul_mat4(local_point_h, &penetrated_cube->transform);
+				contact_point = vec4_to_vec3(world_point_h);
+			}
 		}
+
+		contact_point_a = vec4_to_vec3(vec4_mul_mat4(vec3_to_vec4(contact_point), &cube_a_inverse_transform));
+		contact_point_b = vec4_to_vec3(vec4_mul_mat4(vec3_to_vec4(contact_point), &cube_b_inverse_transform));
+
+		max_penetration_depth = min_penetration_depth;
+	} else {
+		printf("edge:\n");
+		Vec3 point_a, point_b;
+		max_penetration_depth = -closest_points_line_segments(edge_a_start, edge_a_end, edge_b_start, edge_b_end, &point_a, &point_b);
+		const Vec3 a_dir = vec3_sub(edge_a_end, edge_a_start);
+		const Vec3 b_dir = vec3_sub(edge_b_end, edge_b_start);
+		/*
+		printf("edge a: %.2f %.2f %.2f -> %.2f %.2f %.2f (%.2f %.2f %.2f) %.2f\n", edge_a_start.x, edge_a_start.y, edge_a_start.z, edge_a_end.x, edge_a_end.y, edge_a_end.z, a_dir.x, a_dir.y, a_dir.z, vec3_length(a_dir));
+		printf("edge b: %.2f %.2f %.2f -> %.2f %.2f %.2f (%.2f %.2f %.2f) %.2f\n", edge_b_start.x, edge_b_start.y, edge_b_start.z, edge_b_end.x, edge_b_end.y, edge_b_end.z, b_dir.x, b_dir.y, b_dir.z, vec3_length(b_dir));
+		*/
+
+		// Convert points to local space
+		const Vec3 local_point_a = vec4_to_vec3(vec4_mul_mat4(vec3_to_vec4(point_a), &cube_a_inverse_transform));
+		const Vec3 local_point_b = vec4_to_vec3(vec4_mul_mat4(vec3_to_vec4(point_b), &cube_b_inverse_transform));
+
+		contact_point_a = local_point_a;
+		contact_point_b = local_point_b;
 	}
 
 	if (contact_manifold->num_points >= MANIFOLD_POINTS) {
 		printf("Overflow of manifold contact points\n");
 	}
 
-	contact_manifold->points[contact_manifold->num_points] = contact_point;
-	contact_manifold->depths[contact_manifold->num_points] = -max_penetration_depth;
+	contact_manifold->local_points_a[contact_manifold->num_points] = contact_point_a;
+	contact_manifold->local_points_b[contact_manifold->num_points] = contact_point_b;
+	contact_manifold->depths[contact_manifold->num_points] = max_penetration_depth;
 	contact_manifold->cube_a = cube_a;
 	contact_manifold->cube_b = cube_b;
 	contact_manifold->normal = min_penetration_axis;
 	contact_manifold->num_points++;
 
+	if (collision_type == EDGE_TO_EDGE) {
+		buffer_collision_edges(edge_a_start, vec3_sub(edge_a_end, edge_a_start), edge_b_start, vec3_sub(edge_b_end, edge_b_start));
+		//sim_sleep_ms(1000);
+	}
+
+	buffer_collision_normal(penetrated_cube->position, min_penetration_axis);
+
+	printf("depth: %f\n", max_penetration_depth);
+	//sim_pause();
+
+	/*
+	printf("point a: %f %f %f\n", contact_point_a.x, contact_point_a.y, contact_point_a.z);
+	printf("point b: %f %f %f\n", contact_point_b.x, contact_point_b.y, contact_point_b.z);
+	*/
+	//printf("normal: %f %f %f\n", min_penetration_axis.x, min_penetration_axis.y, min_penetration_axis.z);
+	//printf("num_points: %d\n", contact_manifold->num_points);
+
 	return true;
 }
 
-void main_loop() {
-	// Start frame timer
-	const double pre_draw_time_ms = get_time_ms();
-
+void physics_step() {
 	// Collision detection
 	ContactManifold contact_manifolds[255];
 	int num_manifolds = 0;
@@ -599,6 +901,7 @@ void main_loop() {
 		double t1 = DELTA_TIME;
 		double t_mid = 0;
 		ContactManifold contact_manifold;
+		printf("new collision check\n");
 		while (t1 - t0 > COLLISION_TIME_TOLERANCE) {
 			contact_manifold = (ContactManifold){};
 
@@ -666,7 +969,21 @@ void main_loop() {
 		const Cube* const cube_b = contact_manifold.cube_b;
 
 		for (int j = 0; j < contact_manifold.num_points; j++) {
-			const Vec3 local_collision_point = contact_manifold.points[j];
+			/*
+			const Vec3 world_collision_point = contact_manifold.local_points[j];
+			buffer_collision_point(world_collision_point);
+			const Vec4 world_collision_point_h = vec3_to_vec4(world_collision_point);
+			const Vec3 local_collision_point_a = vec4_to_vec3(vec4_mul_mat4(world_collision_point_h, &cube_a->inverse_transform));
+			Vec3 local_collision_point_b;
+
+			if (cube_b) {
+				local_collision_point_b = vec4_to_vec3(vec4_mul_mat4(world_collision_point_h, &cube_b->inverse_transform));
+			}
+			*/
+
+			const Vec3 local_collision_point_a = contact_manifold.local_points_a[j];
+			const Vec3 local_collision_point_b = contact_manifold.local_points_b[j];
+
 			const Vec3 collision_normal = contact_manifold.normal;
 
 			// Normal impulse
@@ -677,15 +994,15 @@ void main_loop() {
 				relative_velocity = vec3_sub(cube_a->velocity, cube_b->velocity);
 
 				const Vec3 mass_part = vec3_scale(collision_normal, 1 / CUBE_MASS + 1 / CUBE_MASS);
-				const Vec3 inertia_part_a = vec3_cross(vec3_mul_mat3(vec3_cross(local_collision_point, collision_normal), &cube_a->inverse_inertia), local_collision_point);
-				const Vec3 inertia_part_b = vec3_cross(vec3_mul_mat3(vec3_cross(local_collision_point, collision_normal), &cube_b->inverse_inertia), local_collision_point);
+				const Vec3 inertia_part_a = vec3_cross(vec3_mul_mat3(vec3_cross(local_collision_point_a, collision_normal), &cube_a->inverse_inertia), local_collision_point_a);
+				const Vec3 inertia_part_b = vec3_cross(vec3_mul_mat3(vec3_cross(local_collision_point_b, collision_normal), &cube_b->inverse_inertia), local_collision_point_b);
 				denominator = vec3_dot(collision_normal, mass_part) + vec3_dot(collision_normal, vec3_add(inertia_part_a, inertia_part_b));
 			// If the collision was between a cube and the floor
 			} else {
 				relative_velocity = cube_a->velocity;
 
 				const Vec3 mass_part = vec3_scale(collision_normal, 1 / CUBE_MASS);
-				const Vec3 inertia_part = vec3_cross(vec3_mul_mat3(vec3_cross(local_collision_point, collision_normal), &cube_a->inverse_inertia), local_collision_point);
+				const Vec3 inertia_part = vec3_cross(vec3_mul_mat3(vec3_cross(local_collision_point_a, collision_normal), &cube_a->inverse_inertia), local_collision_point_a);
 				denominator = vec3_dot(collision_normal, mass_part) + vec3_dot(collision_normal, inertia_part);
 			}
 
@@ -704,13 +1021,13 @@ void main_loop() {
 			//const Vec3 relative_angular_velocity = vec3_sub(cube_a->angular_velocity, cube_b->angular_velocity);
 			Vec3 relative_point_velocity;
 			if (contact_manifold.cube_b) {
-				const Vec3 local_point_velocity_a = vec3_cross(cube_a->angular_velocity, local_collision_point);
-				const Vec3 local_point_velocity_b = vec3_cross(cube_b->angular_velocity, local_collision_point);
+				const Vec3 local_point_velocity_a = vec3_cross(cube_a->angular_velocity, local_collision_point_a);
+				const Vec3 local_point_velocity_b = vec3_cross(cube_b->angular_velocity, local_collision_point_b);
 				const Vec3 point_velocity_a = vec3_add(relative_velocity, local_point_velocity_a);
 				const Vec3 point_velocity_b = vec3_add(relative_velocity, local_point_velocity_b);
 				relative_point_velocity = vec3_sub(point_velocity_a, point_velocity_b);
 			} else {
-				const Vec3 local_point_velocity = vec3_cross(cube_a->angular_velocity, local_collision_point);
+				const Vec3 local_point_velocity = vec3_cross(cube_a->angular_velocity, local_collision_point_a);
 				relative_point_velocity = vec3_add(relative_velocity, local_point_velocity);
 			}
 
@@ -725,13 +1042,13 @@ void main_loop() {
 			Vec3* const linear_impulse_a = &total_linear_impulses[cube_a->index];
 			*linear_impulse_a = vec3_add(*linear_impulse_a, vec3_div(vec3_add(normal_impulse_a, tangential_impulse_a), CUBE_MASS));
 			Vec3* const angular_impulse_a = &total_angular_impulses[cube_a->index];
-			*angular_impulse_a = vec3_add(*angular_impulse_a, vec3_mul_mat3(vec3_cross(local_collision_point, normal_impulse_a), &cube_a->inverse_inertia));
+			*angular_impulse_a = vec3_add(*angular_impulse_a, vec3_mul_mat3(vec3_cross(local_collision_point_a, normal_impulse_a), &cube_a->inverse_inertia));
 
 			if (contact_manifold.cube_b) {
 				Vec3* const linear_impulse_b = &total_linear_impulses[cube_b->index];
 				*linear_impulse_b = vec3_add(*linear_impulse_b, vec3_div(vec3_add(normal_impulse_b, tangential_impulse_b), CUBE_MASS));
 				Vec3* const angular_impulse_b = &total_angular_impulses[cube_b->index];
-				*angular_impulse_b = vec3_add(*angular_impulse_b, vec3_mul_mat3(vec3_cross(local_collision_point, normal_impulse_b), &cube_b->inverse_inertia));
+				*angular_impulse_b = vec3_add(*angular_impulse_b, vec3_mul_mat3(vec3_cross(local_collision_point_b, normal_impulse_b), &cube_b->inverse_inertia));
 			}
 		}
 	}
@@ -786,6 +1103,43 @@ void main_loop() {
 		integrate_cube(&CUBES[i], (float)DELTA_TIME);
 
 	}
+}
+
+void main_loop(const Inputs old_inputs, const Inputs inputs) {
+	// Start frame timer
+	const double pre_draw_time_ms = get_time_ms();
+
+	// If orbiting
+	if (inputs.mouse_left) {
+		const Vec2 mouse_delta = vec2_sub(inputs.mouse_pos, old_inputs.mouse_pos);
+		Mat3 rotation = MAT3_IDENTITY;
+		rotation = mat3_rotate(&rotation, -mouse_delta.x, new_vec3(0, 1, 0));
+		const Vec3 y_axis = vec3_normalize(vec3_cross(new_vec3(0, 1, 0), CAMERA_POSITION));
+		rotation = mat3_rotate(&rotation, -mouse_delta.y, y_axis);
+		CAMERA_POSITION = vec3_mul_mat3(CAMERA_POSITION, &rotation);
+	}
+
+	if (inputs.pause && !old_inputs.pause) {
+		IS_PAUSED = !IS_PAUSED;
+	}
+
+	if (inputs.toggle_wireframe && !old_inputs.toggle_wireframe) {
+		IS_WIREFRAME = !IS_WIREFRAME;
+	}
+
+	if (inputs.reset_simulation && !old_inputs.reset_simulation) {
+		start_simulation();
+	}
+
+	VIEW = mat4_look_at(CAMERA_POSITION, new_vec3(0, 0, 0), new_vec3(0, 1, 0));
+
+	// Physics
+	if (IS_SLEEPING && get_time_ms() > SLEEP_END_TIME) {
+		IS_SLEEPING = false;
+		physics_step();
+	} else if (!IS_SLEEPING && !IS_PAUSED) {
+		physics_step();
+	}
 
 	// Rendering
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -799,7 +1153,9 @@ void main_loop() {
 	shader_set_vec3(BASIC_SHADER, "light_dir", &LIGHT_DIR);
 	shader_set_vec3(BASIC_SHADER, "light_color", &LIGHT_COLOR);
 
-	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	if (IS_WIREFRAME) {
+		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	}
 	draw_cubes();
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
@@ -810,6 +1166,11 @@ void main_loop() {
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
 	//draw_collision_points();
+	//draw_cube_vectors();
+	/*
+	draw_collision_normals();
+	draw_collision_edges();
+	*/
 
 	// Update delta time
 	const double post_draw_time_ms = get_time_ms();

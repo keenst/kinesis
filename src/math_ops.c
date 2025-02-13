@@ -1,5 +1,12 @@
 #include "math_ops.h"
 
+Vec2 vec2_sub(const Vec2 a, const Vec2 b) {
+	return (Vec2){
+		a.x - b.x,
+		a.y - b.y
+	};
+}
+
 Vec3 vec3_add(const Vec3 a, const Vec3 b) {
 	return (Vec3){
 		a.x + b.x,
@@ -49,6 +56,17 @@ Vec3 vec3_mul_mat3(const Vec3 a, const Mat3* const b) {
 		a.x * b->m[1][0] + a.y * b->m[1][1] + a.z * b->m[1][2],
 		a.x * b->m[2][0] + a.y * b->m[2][1] + a.z * b->m[2][2]
 	};
+}
+
+Vec3 vec3_mul_mat4(const Vec3 vec3, const Mat4* const mat4) {
+	Vec3 result_vector = {};
+	float* const result = (float*)&result_vector;
+
+	for (int i = 0; i < 3; i++) {
+		result[i] = mat4->m[i][0] * vec3.x + mat4->m[i][1] * vec3.y + mat4->m[i][2] * vec3.z + mat4->m[i][3];
+	}
+
+	return result_vector;
 }
 
 Mat3 mat3_mul(const Mat3* const a, const Mat3* const b) {
