@@ -410,10 +410,6 @@ void startup(int argc, char** argv) {
 
 	PROJECTION = mat4_perspective(45, 800.f / 600, 0.1f, 1000);
 
-	//VIEW = mat4_look_at(new_vec3(-40, 50, -40), new_vec3(0, 0, 0), new_vec3(0, 1, 0));
-	//VIEW = mat4_look_at(new_vec3(40, 0, -40), new_vec3(0, 0, 0), new_vec3(0, 1, 0));
-	//VIEW = mat4_look_at(new_vec3(1, 60, 0), new_vec3(0, 0, 0), new_vec3(0, 1, 0));
-
 	start_simulation();
 }
 
@@ -619,13 +615,6 @@ bool collision_check_cubes(ContactManifold* const contact_manifold, Cube* const 
 	normals[13] = vec3_normalize(vec3_cross(normals[1], normals[5]));
 	normals[14] = vec3_normalize(vec3_cross(normals[2], normals[5]));
 
-	/*
-	const Vec3 vertices[8] = {
-		{ -0.5f, -0.5f, -0.5f }, { 0.5f, -0.5f, -0.5f }, { 0.5f, 0.5f, -0.5f }, { -0.5f, 0.5f, -0.5f },
-		{ -0.5f, -0.5f, 0.5f }, { 0.5f, -0.5f, 0.5f }, { 0.5f, 0.5f, 0.5f }, { -0.5f, 0.5f, 0.5f }
-	};
-	*/
-
 	const Vec3 vertices[8] = {
 		{ 0.5f, -0.5f, -0.5f }, { -0.5f, -0.5f, -0.5f }, { -0.5f, -0.5f, 0.5f }, { 0.5f, -0.5f, 0.5f },
 		{ 0.5f, 0.5f, -0.5f }, { -0.5f, 0.5f, -0.5f }, { -0.5f, 0.5f, 0.5f }, { 0.5f, 0.5f, 0.5f }
@@ -646,8 +635,6 @@ bool collision_check_cubes(ContactManifold* const contact_manifold, Cube* const 
 	CollisionType collision_type;
 	Vec3 min_penetration_axis; // This is the same as collision normal
 	float min_penetration_depth = FLT_MAX;
-
-	// Values for corner-to-face collisions
 	const Cube* penetrated_cube; // The cube whose face is min_penetration_axis
 
 	// Values for edge-to-edge collisiosn
