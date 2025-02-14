@@ -49,6 +49,16 @@ typedef struct {
 	float depths[MANIFOLD_POINTS];
 } ContactManifold;
 
+typedef enum {
+	REALTIME,
+	SLOWMO_2X,
+	SLOWMO_3X,
+	SLOWMO_4X,
+	SLOWMO_5X
+} SimSpeed;
+
+SimSpeed SIM_SPEED = REALTIME;
+
 Shader BASIC_SHADER;
 Shader POINT_SHADER;
 
@@ -569,8 +579,6 @@ float closest_points_line_segments(const Vec3 a_start, const Vec3 a_end, const V
 	return vec3_length(dist_vec);
 }
 
-float lowest_cross = FLT_MAX;
-
 bool collision_check_cubes(ContactManifold* const contact_manifold, Cube* const cube_a, Cube* const cube_b, const float t) {
 	Mat4 cube_a_transform = cube_a->transform;
 	Mat4 cube_b_transform = cube_b->transform;
@@ -738,7 +746,6 @@ bool collision_check_cubes(ContactManifold* const contact_manifold, Cube* const 
 					edges_b[num_edges_b][0] = edge_start;
 					edges_b[num_edges_b++][1] = edge_end;
 				}
-				int x = 5;
 			}
 
 			// Find edges of collision
@@ -797,7 +804,6 @@ bool collision_check_cubes(ContactManifold* const contact_manifold, Cube* const 
 
 	// Find the contact points
 	if (collision_type == CORNER_TO_FACE) {
-		printf("face\n");
 		// Use the minimum penetration axis to calculate the point of contact
 		// Find the corner of the penetrating cube that is furthest along the collision normal
 		Vec3 contact_point;
@@ -818,15 +824,8 @@ bool collision_check_cubes(ContactManifold* const contact_manifold, Cube* const 
 
 		max_penetration_depth = min_penetration_depth;
 	} else {
-		printf("edge:\n");
 		Vec3 point_a, point_b;
 		max_penetration_depth = -closest_points_line_segments(edge_a_start, edge_a_end, edge_b_start, edge_b_end, &point_a, &point_b);
-		const Vec3 a_dir = vec3_sub(edge_a_end, edge_a_start);
-		const Vec3 b_dir = vec3_sub(edge_b_end, edge_b_start);
-		/*
-		printf("edge a: %.2f %.2f %.2f -> %.2f %.2f %.2f (%.2f %.2f %.2f) %.2f\n", edge_a_start.x, edge_a_start.y, edge_a_start.z, edge_a_end.x, edge_a_end.y, edge_a_end.z, a_dir.x, a_dir.y, a_dir.z, vec3_length(a_dir));
-		printf("edge b: %.2f %.2f %.2f -> %.2f %.2f %.2f (%.2f %.2f %.2f) %.2f\n", edge_b_start.x, edge_b_start.y, edge_b_start.z, edge_b_end.x, edge_b_end.y, edge_b_end.z, b_dir.x, b_dir.y, b_dir.z, vec3_length(b_dir));
-		*/
 
 		// Convert points to local space
 		const Vec3 local_point_a = vec4_to_vec3(vec4_mul_mat4(vec3_to_vec4(point_a), &cube_a_inverse_transform));
@@ -855,7 +854,6 @@ bool collision_check_cubes(ContactManifold* const contact_manifold, Cube* const 
 
 	buffer_collision_normal(penetrated_cube->position, min_penetration_axis);
 
-	printf("depth: %f\n", max_penetration_depth);
 	//sim_pause();
 
 	/*
@@ -869,6 +867,8 @@ bool collision_check_cubes(ContactManifold* const contact_manifold, Cube* const 
 }
 
 void physics_step() {
+	sim_sleep_ms(DELTA_TIME * 1000 * (int)SIM_SPEED);
+
 	// Collision detection
 	ContactManifold contact_manifolds[255];
 	int num_manifolds = 0;
@@ -888,7 +888,6 @@ void physics_step() {
 		double t1 = DELTA_TIME;
 		double t_mid = 0;
 		ContactManifold contact_manifold;
-		printf("new collision check\n");
 		while (t1 - t0 > COLLISION_TIME_TOLERANCE) {
 			contact_manifold = (ContactManifold){};
 
@@ -956,18 +955,6 @@ void physics_step() {
 		const Cube* const cube_b = contact_manifold.cube_b;
 
 		for (int j = 0; j < contact_manifold.num_points; j++) {
-			/*
-			const Vec3 world_collision_point = contact_manifold.local_points[j];
-			buffer_collision_point(world_collision_point);
-			const Vec4 world_collision_point_h = vec3_to_vec4(world_collision_point);
-			const Vec3 local_collision_point_a = vec4_to_vec3(vec4_mul_mat4(world_collision_point_h, &cube_a->inverse_transform));
-			Vec3 local_collision_point_b;
-
-			if (cube_b) {
-				local_collision_point_b = vec4_to_vec3(vec4_mul_mat4(world_collision_point_h, &cube_b->inverse_transform));
-			}
-			*/
-
 			const Vec3 local_collision_point_a = contact_manifold.local_points_a[j];
 			const Vec3 local_collision_point_b = contact_manifold.local_points_b[j];
 
@@ -1106,6 +1093,8 @@ void main_loop(const Inputs old_inputs, const Inputs inputs) {
 		CAMERA_POSITION = vec3_mul_mat3(CAMERA_POSITION, &rotation);
 	}
 
+	VIEW = mat4_look_at(CAMERA_POSITION, new_vec3(0, 0, 0), new_vec3(0, 1, 0));
+
 	if (inputs.pause && !old_inputs.pause) {
 		IS_PAUSED = !IS_PAUSED;
 	}
@@ -1118,13 +1107,24 @@ void main_loop(const Inputs old_inputs, const Inputs inputs) {
 		start_simulation();
 	}
 
-	VIEW = mat4_look_at(CAMERA_POSITION, new_vec3(0, 0, 0), new_vec3(0, 1, 0));
+	if (inputs.realtime) {
+		SIM_SPEED = REALTIME;
+	} else if (inputs.slowmo_2x) {
+		SIM_SPEED = SLOWMO_2X;
+	} else if (inputs.slowmo_3x) {
+		SIM_SPEED = SLOWMO_3X;
+	} else if (inputs.slowmo_4x) {
+		SIM_SPEED = SLOWMO_4X;
+	} else if (inputs.slowmo_5x) {
+		SIM_SPEED = SLOWMO_5X;
+	}
 
 	// Physics
 	if (IS_SLEEPING && get_time_ms() > SLEEP_END_TIME) {
 		IS_SLEEPING = false;
-		physics_step();
-	} else if (!IS_SLEEPING && !IS_PAUSED) {
+	}
+
+	if (!IS_SLEEPING && !IS_PAUSED) {
 		physics_step();
 	}
 

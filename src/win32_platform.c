@@ -39,6 +39,21 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
 				case 'R': {
 					INPUT_BUFFER.reset_simulation = true;
 				} break;
+				case '1': {
+					INPUT_BUFFER.realtime = true;
+				} break;
+				case '2': {
+					INPUT_BUFFER.slowmo_2x = true;
+				} break;
+				case '3': {
+					INPUT_BUFFER.slowmo_3x = true;
+				} break;
+				case '4': {
+					INPUT_BUFFER.slowmo_4x = true;
+				} break;
+				case '5': {
+					INPUT_BUFFER.slowmo_5x = true;
+				} break;
 			}
 		} break;
 		case WM_LBUTTONDOWN: {
