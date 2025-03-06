@@ -256,7 +256,7 @@ void start_simulation() {
 	CUBES[0].position = new_vec3(0, 20, 0);
 	CUBES[0].scale = mat3_scale(&MAT3_IDENTITY, CUBE_SCALE);
 	//CUBES[0].orientation = mat3_rotate(&MAT3_IDENTITY, 0, new_vec3(0, 1, 0));
-	CUBES[0].orientation = mat3_rotate(&MAT3_IDENTITY, 45, new_vec3(0, 1, 0));
+	CUBES[0].orientation = mat3_rotate(&MAT3_IDENTITY, 0, new_vec3(0, 1, 0));
 	CUBES[0].inertia.m[0][0] = 1.f / 6 * CUBE_MASS * CUBE_SCALE.x * CUBE_SCALE.x;
 	CUBES[0].inertia.m[1][1] = 1.f / 6 * CUBE_MASS * CUBE_SCALE.x * CUBE_SCALE.x;
 	CUBES[0].inertia.m[2][2] = 1.f / 6 * CUBE_MASS * CUBE_SCALE.x * CUBE_SCALE.x;
@@ -266,10 +266,10 @@ void start_simulation() {
 	ACTIVE_CUBES[0] = true;
 
 	CUBES[1] = (Cube){};
-	CUBES[1].position = new_vec3(0, 30, 0);
+	CUBES[1].position = new_vec3(1, 30, 1);
 	//CUBES[1].position = new_vec3(0, 10, 10);
 	CUBES[1].scale = mat3_scale(&MAT3_IDENTITY, CUBE_SCALE);
-	CUBES[1].orientation = mat3_rotate(&MAT3_IDENTITY, 45, new_vec3(1, 1, 1));
+	CUBES[1].orientation = mat3_rotate(&MAT3_IDENTITY, 0, new_vec3(1, 1, 0));
 	//CUBES[1].orientation = mat3_rotate(&MAT3_IDENTITY, 0, new_vec3(0, 3, 4));
 	CUBES[1].inertia.m[0][0] = 1.f / 6 * CUBE_MASS * CUBE_SCALE.x * CUBE_SCALE.x;
 	CUBES[1].inertia.m[1][1] = 1.f / 6 * CUBE_MASS * CUBE_SCALE.x * CUBE_SCALE.x;
@@ -277,7 +277,7 @@ void start_simulation() {
 	CUBES[1].inverse_inertia = mat3_inverse(&CUBES[0].inertia);
 	CUBES[1].index = 1;
 	update_transform(&CUBES[1]);
-	ACTIVE_CUBES[1] = true;
+ 	ACTIVE_CUBES[1] = true;
 }
 
 void startup(int argc, char** argv) {
@@ -659,6 +659,10 @@ bool collision_check_cubes(ContactManifold* const contact_manifold, Cube* const 
 
 	// Project the corners of both cubes onto all normals
 	for (int normal_index = 0; normal_index < 15; normal_index++) {
+		if (vec3_length(normals[normal_index]) == 0) {
+			continue;
+		}
+
 		float a_min = FLT_MAX;
 		float b_min = FLT_MAX;
 		float a_max = -FLT_MAX;
