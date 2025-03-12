@@ -454,6 +454,10 @@ void startup(int argc, char** argv) {
 	start_simulation();
 }
 
+void update_window_size(int width, int height) {
+	PROJECTION = mat4_perspective(45, (float)width / height, 0.1f, 1000);
+}
+
 bool cube_is_resting(const int index) {
 	/*
 	for (int i = 0; i < MAX_CONTACTS; i++) {

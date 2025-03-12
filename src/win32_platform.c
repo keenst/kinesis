@@ -11,6 +11,13 @@ Inputs INPUT_BUFFER = {};
 
 bool MOUSE_LEFT_DOWN = false;
 
+void get_real_window_size(int width, int height, int* real_width, int* real_height) {
+	RECT rect = { 0, 0, width, height };
+	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+	*real_width = rect.right - rect.left;
+	*real_height = rect.bottom - rect.top;
+}
+
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
 	LRESULT result = 0;
 
@@ -25,8 +32,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
 			if (!GL_LOADED) {
 				break;
 			}
-			// TODO: Change this to the proper screen size, without border and whatnot
+			int width, height;
+			get_real_window_size(LOWORD(l_param), HIWORD(l_param), &width, &height);
 			glViewport(0, 0, LOWORD(l_param), HIWORD(l_param));
+			update_window_size(width, height);
 		} break;
 		case WM_KEYDOWN: {
 			switch (w_param) {
@@ -77,10 +86,8 @@ HWND create_window(HINSTANCE instance) {
 	window_class.hInstance = instance;
 	window_class.lpszClassName = "kinesis";
 
-	RECT rect = { 0, 0, 800, 600 };
-	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
-	const int adjusted_width = rect.right - rect.left;
-	const int adjusted_height = rect.bottom - rect.top;
+	int adjusted_width, adjusted_height;
+	get_real_window_size(800, 600, &adjusted_width, &adjusted_height);
 
 	if (RegisterClass(&window_class)) {
 		HWND hwnd = CreateWindowEx(
