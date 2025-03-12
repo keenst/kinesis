@@ -20,6 +20,14 @@ Vec3 vec3_normalize(Vec3 vector) {
 	return vector;
 }
 
+// Returns the longest vector
+Vec3 vec3_max(const Vec3 a, const Vec3 b) {
+	if (vec3_length(a) > vec3_length(b)) {
+		return a;
+	}
+	return b;
+}
+
 const float* const vec3_flatten(const Vec3* const vec3) {
 	return (float*)vec3;
 }
