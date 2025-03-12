@@ -1158,9 +1158,9 @@ void main_loop(const Inputs old_inputs, const Inputs inputs) {
 	if (inputs.mouse_left) {
 		const Vec2 mouse_delta = vec2_sub(inputs.mouse_pos, old_inputs.mouse_pos);
 		Mat3 rotation = MAT3_IDENTITY;
-		rotation = mat3_rotate(&rotation, -mouse_delta.x, new_vec3(0, 1, 0));
+		rotation = mat3_rotate(&rotation, -mouse_delta.x / 2, new_vec3(0, 1, 0));
 		const Vec3 y_axis = vec3_normalize(vec3_cross(new_vec3(0, 1, 0), CAMERA_POSITION));
-		rotation = mat3_rotate(&rotation, -mouse_delta.y, y_axis);
+		rotation = mat3_rotate(&rotation, -mouse_delta.y / 2, y_axis);
 		CAMERA_POSITION = vec3_mul_mat3(CAMERA_POSITION, &rotation);
 	}
 
